@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { Colors } from '../../constants/colors';
 import { firebaseAuthHataMetni } from '../../utils/firebaseAuthTr';
+import { IS_FIREBASE_CONFIGURED } from '../../config/firebase';
 
 type NavProp = NativeStackNavigationProp<AuthStackParamList, 'SifremiUnuttum'>;
 
@@ -58,6 +59,17 @@ export default function ForgotPasswordScreen() {
             Hesabınızın e-posta adresini yazın; şifrenizi yenilemeniz için size bir bağlantı gönderilir.
           </Text>
 
+          {!IS_FIREBASE_CONFIGURED && (
+            <View style={styles.demoBilgi}>
+              <Ionicons name="information-circle-outline" size={18} color={Colors.warning} />
+              <Text style={styles.demoBilgiText}>
+                Demo modunda şifre sıfırlama desteklenmez. Yönetici şifresi:{' '}
+                <Text style={{ fontWeight: '700' }}>admin123</Text>, üye şifresi:{' '}
+                <Text style={{ fontWeight: '700' }}>123456</Text>
+              </Text>
+            </View>
+          )}
+
           <View style={styles.inputContainer}>
             <Ionicons name="mail-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
             <TextInput
@@ -72,9 +84,9 @@ export default function ForgotPasswordScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.button, yukleniyor && styles.buttonDisabled]}
+            style={[styles.button, (yukleniyor || !IS_FIREBASE_CONFIGURED) && styles.buttonDisabled]}
             onPress={gonder}
-            disabled={yukleniyor}
+            disabled={yukleniyor || !IS_FIREBASE_CONFIGURED}
           >
             <Text style={styles.buttonText}>{yukleniyor ? 'Gönderiliyor...' : 'Sıfırlama bağlantısı gönder'}</Text>
           </TouchableOpacity>
@@ -131,4 +143,16 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
+  demoBilgi: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: Colors.warning + '15',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.warning + '40',
+  },
+  demoBilgiText: { flex: 1, fontSize: 12, color: Colors.warning, lineHeight: 18 },
 });

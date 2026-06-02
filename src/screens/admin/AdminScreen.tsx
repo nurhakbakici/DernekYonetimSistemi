@@ -5,6 +5,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
 import { Colors } from '../../constants/colors';
 import ScreenHeader from '../../components/common/ScreenHeader';
 
@@ -19,11 +20,14 @@ interface AdminKart {
 
 export default function AdminScreen() {
   const navigation = useNavigation<any>();
+  const { aktifDernek, paketAktif } = useAuth();
   const {
     rezervasyonlar, rezervasyonYukle,
     etkinlikler, etkinlikYukle,
     aidatOdemeleri, aidatYukle,
     bursBasvurulari, bursBasvuruYukle,
+    gonulluBasvurular, gonulluBasvuruYukle,
+    envanterZimmetler, envanterZimmetYukle,
     kullanicilar, kullaniciYukle,
     duyuruYukle,
   } = useData();
@@ -33,6 +37,8 @@ export default function AdminScreen() {
     etkinlikYukle();
     aidatYukle();
     bursBasvuruYukle();
+    gonulluBasvuruYukle();
+    envanterZimmetYukle();
     kullaniciYukle();
     duyuruYukle();
   }, []);
@@ -41,12 +47,14 @@ export default function AdminScreen() {
   const bekleyenEtkinlikler = etkinlikler.filter(e => e.durum === 'beklemede').length;
   const odenmemisAidatlar = aidatOdemeleri.filter(a => !a.odendi).length;
   const bekleyenBurslar = bursBasvurulari.filter(b => b.durum === 'beklemede').length;
+  const bekleyenGonullu = gonulluBasvurular.filter(b => b.durum === 'beklemede').length;
+  const aktifZimmetSayisi = envanterZimmetler.filter(z => z.durum === 'aktif').length;
   const bursOdemeBekleyen = bursBasvurulari.filter(
     b => b.durum === 'onaylandi' && b.bursOdemeDurumu !== 'yatirildi',
   ).length;
   const toplam = bekleyenRezervasyonlar + bekleyenEtkinlikler + bekleyenBurslar;
 
-  const kartlar: AdminKart[] = [
+  const tumKartlar: (AdminKart & { paket?: string })[] = [
     {
       ikon: 'calendar',
       baslik: 'Rezervasyonlar',
@@ -54,6 +62,7 @@ export default function AdminScreen() {
       renk: Colors.info,
       onPress: () => navigation.navigate('AdminReservations'),
       sayac: bekleyenRezervasyonlar,
+      paket: 'odalar',
     },
     {
       ikon: 'calendar-outline',
@@ -62,6 +71,7 @@ export default function AdminScreen() {
       renk: Colors.secondary,
       onPress: () => navigation.navigate('AdminEvents'),
       sayac: bekleyenEtkinlikler,
+      paket: 'etkinlikler',
     },
     {
       ikon: 'card',
@@ -70,6 +80,7 @@ export default function AdminScreen() {
       renk: Colors.purple,
       onPress: () => navigation.navigate('AdminMembership'),
       sayac: odenmemisAidatlar,
+      paket: 'aidat',
     },
     {
       ikon: 'school',
@@ -81,6 +92,7 @@ export default function AdminScreen() {
       renk: Colors.gold,
       onPress: () => navigation.navigate('AdminScholarships'),
       sayac: bekleyenBurslar,
+      paket: 'burslar',
     },
     {
       ikon: 'add-circle-outline',
@@ -88,6 +100,7 @@ export default function AdminScreen() {
       aciklama: 'Sisteme yeni burs ilanı ekle',
       renk: Colors.primaryLight,
       onPress: () => navigation.navigate('AdminAddScholarship'),
+      paket: 'burslar',
     },
     {
       ikon: 'megaphone',
@@ -95,6 +108,7 @@ export default function AdminScreen() {
       aciklama: 'Üyelere duyuru yayınla',
       renk: Colors.warning,
       onPress: () => navigation.navigate('AdminDuyurular'),
+      paket: 'duyurular',
     },
     {
       ikon: 'power',
@@ -102,6 +116,41 @@ export default function AdminScreen() {
       aciklama: 'Açık/kapalı durumunu güncelle',
       renk: Colors.success,
       onPress: () => navigation.navigate('AdminStatus'),
+      paket: 'acikKapali',
+    },
+    {
+      ikon: 'hand-left-outline',
+      baslik: 'Gönüllü başvuruları',
+      aciklama: 'Gönüllü görev başvurularını onayla',
+      renk: Colors.info,
+      onPress: () => navigation.navigate('AdminVolunteer'),
+      sayac: bekleyenGonullu,
+      paket: 'gonulluluk',
+    },
+    {
+      ikon: 'add-circle-outline',
+      baslik: 'Gönüllü görev ekle',
+      aciklama: 'Yeni gönüllü ilanı oluştur',
+      renk: Colors.primaryLight,
+      onPress: () => navigation.navigate('AddVolunteerTask'),
+      paket: 'gonulluluk',
+    },
+    {
+      ikon: 'cube-outline',
+      baslik: 'Zimmet takibi',
+      aciklama: 'Aktif demirbaş zimmetlerini yönet',
+      renk: Colors.warning,
+      onPress: () => navigation.navigate('AdminInventory'),
+      sayac: aktifZimmetSayisi,
+      paket: 'envanter',
+    },
+    {
+      ikon: 'add-circle-outline',
+      baslik: 'Demirbaş ekle',
+      aciklama: 'Envantere yeni kayıt',
+      renk: Colors.secondary,
+      onPress: () => navigation.navigate('AddInventory'),
+      paket: 'envanter',
     },
     {
       ikon: 'people',
@@ -112,12 +161,15 @@ export default function AdminScreen() {
       sayac: kullanicilar.filter(
         u => u.rol === 'aday' || (u.rol === 'uye' && u.uyelikDurumu === 'beklemede')
       ).length,
+      paket: 'uyelik',
     },
   ];
 
+  const kartlar = tumKartlar.filter(k => !k.paket || paketAktif(k.paket as any));
+
   return (
     <View style={styles.container}>
-      <ScreenHeader baslik="Yönetici Paneli" altBaslik="Kule Sakinleri Derneği" geriButon />
+      <ScreenHeader baslik="Yönetici Paneli" altBaslik={aktifDernek?.ad ?? 'Dernek Yönetimi'} geriButon />
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
 
         {toplam > 0 && (

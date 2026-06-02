@@ -17,7 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Colors } from '../../constants/colors';
 import ScreenHeader from '../../components/common/ScreenHeader';
 import EmptyState from '../../components/common/EmptyState';
-import { yerelGorseliDataUriye } from '../../utils/gorselDataUri';
+import { uploadFileToStorage, timestampedFileName } from '../../utils/storageUpload';
 import {
   birlestirAylikAidat,
   aidatDurumuEtiketi,
@@ -53,7 +53,7 @@ function durumMetni(d: ReturnType<typeof aidatDurumuEtiketi>) {
 }
 
 export default function MembershipScreen() {
-  const { kullanici } = useAuth();
+  const { kullanici, aktifDernekId } = useAuth();
   const { aidatOdemeleri, aidatYukle, aidatEkle, aidatGuncelle, aidatAylikMiktari } = useData();
   const [listeYukleniyor, setListeYukleniyor] = useState(false);
   const [dekontYukleniyorAnahtar, setDekontYukleniyorAnahtar] = useState<string | null>(null);
@@ -99,8 +99,11 @@ export default function MembershipScreen() {
 
       setDekontYukleniyorAnahtar(anahtar);
       try {
-        /* Data URI: Firestore ile tüm cihazlarda aynı görsel (yerel dosya yolu değil) */
-        const dataUri = await yerelGorseliDataUriye(sonuc.assets[0].uri, { genislik: 960, kalite: 0.5 });
+        const tid = aktifDernekId ?? 'genel';
+        const dataUri = await uploadFileToStorage(
+          sonuc.assets[0].uri,
+          `aidatDekontlar/${tid}/${kullanici.id}/${timestampedFileName(`${slot.yil}_${slot.ay}`)}`,
+        );
         const yuklenme = new Date().toISOString();
 
         let kayitId = slot.kayit?.id;

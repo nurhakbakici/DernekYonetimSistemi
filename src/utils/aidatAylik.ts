@@ -10,11 +10,22 @@ export interface AylikAidatSlot {
   kayit?: AidatOdemesi;
 }
 
-/** Ocak 2025 → bu ay (dahil) tüm aylar */
-export function aylarBaslangictanSimdiye(): { yil: number; ay: number }[] {
+/**
+ * Başlangıç tarihi → bu ay (dahil) tüm aylar.
+ * @param baslangicTarihi  Dernek `aidatBaslangicTarihi` (YYYY-MM-DD); belirtilmezse sabit kullanılır.
+ */
+export function aylarBaslangictanSimdiye(baslangicTarihi?: string): { yil: number; ay: number }[] {
   const out: { yil: number; ay: number }[] = [];
-  let y = AIDAT_BASLANGIC_YIL;
-  let m = AIDAT_BASLANGIC_AY;
+  let y: number;
+  let m: number;
+  if (baslangicTarihi) {
+    const d = new Date(baslangicTarihi);
+    y = d.getFullYear();
+    m = d.getMonth() + 1;
+  } else {
+    y = AIDAT_BASLANGIC_YIL;
+    m = AIDAT_BASLANGIC_AY;
+  }
   const now = new Date();
   const endY = now.getFullYear();
   const endM = now.getMonth() + 1;
@@ -38,9 +49,13 @@ export function ayEtiketi(yil: number, ay: number): string {
   return format(new Date(yil, ay - 1, 1), 'MMMM yyyy', { locale: tr });
 }
 
-export function birlestirAylikAidat(kullaniciId: string, tumAidatlar: AidatOdemesi[]): AylikAidatSlot[] {
+export function birlestirAylikAidat(
+  kullaniciId: string,
+  tumAidatlar: AidatOdemesi[],
+  baslangicTarihi?: string,
+): AylikAidatSlot[] {
   const benim = tumAidatlar.filter(a => a.kullaniciId === kullaniciId);
-  return aylarBaslangictanSimdiye().map(({ yil, ay }) => {
+  return aylarBaslangictanSimdiye(baslangicTarihi).map(({ yil, ay }) => {
     const kayit = benim.find(a => a.yil === yil && (a.ay ?? 0) === ay);
     return { yil, ay, kayit };
   });

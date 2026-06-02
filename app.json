@@ -1,8 +1,14 @@
 {
   "expo": {
-    "name": "Kule Sakinleri",
-    "slug": "KuleSakinleri",
+    "name": "Dernek Yönetim",
+    "slug": "dernekapp",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5ad27033-0faf-4374-af5e-4a6bdb191253"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -13,17 +19,27 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kulesakinleri.app"
+      "bundleIdentifier": "com.dernekapp.yonetim",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Aidat dekontu ve belge yüklemek için fotoğraflarınıza erişilir.",
+        "NSCameraUsageDescription": "Dekont fotoğrafı çekmek için kamera kullanılır."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F0F1A"
       },
-      "package": "com.kulesakinleri.app",
+      "package": "com.dernekapp.yonetim",
+      "versionCode": 1,
       "permissions": [
-        "POST_NOTIFICATIONS"
-      ]
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -44,6 +60,12 @@
         }
       ],
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5ad27033-0faf-4374-af5e-4a6bdb191253"
+      }
+    },
+    "owner": "nurhak46"
   }
 }

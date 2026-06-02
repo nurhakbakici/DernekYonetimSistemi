@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
+import EmptyState from '../../components/common/EmptyState';
 import { Colors } from '../../constants/colors';
 import ScreenHeader from '../../components/common/ScreenHeader';
 import { format } from 'date-fns';
@@ -10,7 +11,7 @@ import { tr } from 'date-fns/locale';
 
 export default function AdminStatusScreen() {
   const { dernekDurumu, dernekDurumuYukle, dernekDurumuGuncelle } = useData();
-  const { kullanici } = useAuth();
+  const { kullanici, paketAktif } = useAuth();
   const [acik, setAcik] = useState(false);
   const [mesaj, setMesaj] = useState('');
   const [yukleniyor, setYukleniyor] = useState(false);
@@ -42,6 +43,19 @@ export default function AdminStatusScreen() {
       setYukleniyor(false);
     }
   };
+
+  if (!paketAktif('acikKapali')) {
+    return (
+      <View style={styles.container}>
+        <ScreenHeader baslik="Dernek Durumu" altBaslik="Modül kapalı" geriButon />
+        <EmptyState
+          ikon="power-outline"
+          baslik="Modül etkin değil"
+          aciklama="Açık/kapalı durumu bu dernek için modül listesinde kapalı. Web yönetim panelinden Modüller sekmesinden açabilirsiniz."
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

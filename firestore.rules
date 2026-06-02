@@ -1,0 +1,399 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Yardımcı fonksiyonlar ────────────────────────────────────────────────
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownUid(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // `platformYoneticiler/{uid}` dokümanı veya seed platform e-postası (web/mobil onay için).
+    function platformAdminEmail() {
+      return signedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email in [
+          'admin@kulesakinleri.com',
+        ];
+    }
+
+    function platformAdmin() {
+      return signedIn() && (
+        exists(/databases/$(database)/documents/platformYoneticiler/$(request.auth.uid))
+        || platformAdminEmail()
+      );
+    }
+
+    // Kullanıcının belirtilen dernekteki üyelik dokümanını getirir.
+    function uyeDoc(dernekId) {
+      return get(/databases/$(database)/documents/uyelikler/$(request.auth.uid + '_' + dernekId));
+    }
+
+    // Kullanıcı o dernekte aktif üye mi?
+    function aktifUye(dernekId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/uyelikler/$(request.auth.uid + '_' + dernekId))
+        && uyeDoc(dernekId).data.uyelikDurumu == 'aktif';
+    }
+
+    // Kullanıcı o dernekte aktif yönetici mi?
+    function dernekAdmin(dernekId) {
+      return aktifUye(dernekId)
+        && uyeDoc(dernekId).data.rol == 'admin';
+    }
+
+    // Kullanıcı o dernekte aktif üye ya da aday mı?
+    function dernekUyesiVeyaAday(dernekId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/uyelikler/$(request.auth.uid + '_' + dernekId));
+    }
+
+    // Kaynağın dernekId alanına göre kullanıcı aktif üye mi?
+    function aktifUyeOfResource() {
+      return aktifUye(resource.data.dernekId);
+    }
+
+    // Yeni dokümanın dernekId alanına göre kullanıcı aktif üye mi?
+    function aktifUyeOfRequest() {
+      return aktifUye(request.resource.data.dernekId);
+    }
+
+    // Yeni dokümanın dernekId alanına göre kullanıcı yönetici mi?
+    function adminOfRequest() {
+      return dernekAdmin(request.resource.data.dernekId);
+    }
+
+    // Mevcut dokümanın dernekId alanına göre kullanıcı yönetici mi?
+    function adminOfResource() {
+      return dernekAdmin(resource.data.dernekId);
+    }
+
+    // Dernek yöneticisi veya platform yöneticisi (seed / destek işlemleri)
+    function adminOrPlatformOfRequest() {
+      return adminOfRequest() || platformAdmin();
+    }
+
+    function adminOrPlatformOfResource() {
+      return adminOfResource() || platformAdmin();
+    }
+
+    function tenantRead(dernekId) {
+      return dernekUyesiVeyaAday(dernekId) || platformAdmin();
+    }
+
+    function tenantAktifRead(dernekId) {
+      return aktifUye(dernekId) || platformAdmin();
+    }
+
+    // Sadece paketler alanı mı değişiyor?
+    function sadecePaketlerDegisiyor() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paketler'])
+        && request.resource.data.paketler is list
+        && request.resource.data.paketler.size() > 0;
+    }
+
+    function sadeceDernekDurumuDegisiyor() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dernekDurumu']);
+    }
+
+    // ── Platform yöneticileri ────────────────────────────────────────────────
+
+    match /platformYoneticiler/{uid} {
+      allow read: if ownUid(uid) || platformAdmin();
+      // İlk kurulum: seed platform hesabı kendi kaydını oluşturabilir
+      allow create: if ownUid(uid)
+        && platformAdminEmail()
+        && !exists(/databases/$(database)/documents/platformYoneticiler/$(uid));
+      allow update, delete: if false;
+    }
+
+    // ── Kullanıcı profilleri ─────────────────────────────────────────────────
+
+    match /users/{uid} {
+      // Aynı dernekteki üyeler diğer üyelerin profilini görebilmeli
+      // (üye listesi, burs başvuruları vb.). Profil kaydı kimlik bilgisi içerir;
+      // tam izolasyon gerekiyorsa bu kuralı sıkılaştırın.
+      allow read: if signedIn();
+      allow create: if ownUid(uid);
+      allow update: if ownUid(uid);
+      allow delete: if false;
+    }
+
+    // ── Üyelikler ────────────────────────────────────────────────────────────
+
+    match /uyelikler/{mid} {
+      // Okuma: kendi kaydı veya aynı dernekteki yönetici
+      allow read: if signedIn() && (
+        request.auth.uid == resource.data.userId
+        || dernekAdmin(resource.data.dernekId)
+        || platformAdmin()
+      );
+
+      // Oluşturma: aday başvurusu veya platform yöneticisinin kurucuya admin ataması
+      allow create: if signedIn() && (
+        (
+          request.resource.data.userId == request.auth.uid
+          && request.resource.data.rol == 'aday'
+          && request.resource.data.uyelikDurumu == 'beklemede'
+        )
+        || (
+          platformAdmin()
+          && request.resource.data.rol == 'admin'
+          && request.resource.data.uyelikDurumu == 'aktif'
+          && request.resource.data.userId is string
+          && request.resource.data.dernekId is string
+        )
+        || (
+          platformAdmin()
+          && request.resource.data.userId is string
+          && request.resource.data.dernekId is string
+          && request.resource.data.rol in ['admin', 'uye', 'aday']
+        )
+      );
+
+      // Güncelleme: kendi bazı alanları (uyelikBaslangic), veya dernek admini
+      allow update: if signedIn() && (
+        dernekAdmin(resource.data.dernekId)
+        || platformAdmin()
+      );
+
+      allow delete: if dernekAdmin(resource.data.dernekId) || platformAdmin();
+    }
+
+    // ── Dernekler ────────────────────────────────────────────────────────────
+
+    match /dernekler/{dernekId} {
+      // Giriş yapmamış kullanıcılar yalnızca aktif dernek listesi okuyabilir (kayıt ekranı)
+      allow read: if resource.data.durum == 'aktif' || signedIn();
+
+      // Yeni dernek başvurusu
+      allow create: if signedIn()
+        && request.resource.data.olusturanUserId == request.auth.uid;
+
+      // Güncelleme: platform admin, kurucu, veya dernek admini (yalnızca paketler)
+      allow update: if signedIn() && (
+        platformAdmin()
+        || resource.data.olusturanUserId == request.auth.uid
+        || (dernekAdmin(dernekId) && (sadecePaketlerDegisiyor() || sadeceDernekDurumuDegisiyor()))
+      );
+
+      allow delete: if platformAdmin();
+    }
+
+    // ── Odalar ───────────────────────────────────────────────────────────────
+
+    match /odalar/{id} {
+      allow read: if tenantRead(resource.data.dernekId);
+      allow create: if adminOrPlatformOfRequest();
+      allow update: if adminOrPlatformOfResource();
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    // ── Rezervasyonlar ───────────────────────────────────────────────────────
+
+    match /rezervasyonlar/{id} {
+      // Tüm aktif üyeler okur (takvim görünümü için gerekli)
+      allow read: if tenantAktifRead(resource.data.dernekId);
+
+      // Oluşturma: aktif üye kendi adına veya yönetici / platform (seed)
+      allow create: if adminOrPlatformOfRequest()
+        || (aktifUyeOfRequest() && request.resource.data.kullaniciId == request.auth.uid);
+
+      // Güncelleme: kendi beklemedeki rezervasyonu iptal edebilir, veya admin her şeyi
+      allow update: if signedIn() && (
+        adminOrPlatformOfResource()
+        || (
+          aktifUyeOfResource()
+          && resource.data.kullaniciId == request.auth.uid
+          && request.resource.data.durum == 'iptal'
+          && resource.data.durum == 'beklemede'
+        )
+      );
+
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    // ── Kitaplar ─────────────────────────────────────────────────────────────
+
+    match /kitaplar/{id} {
+      allow read: if tenantRead(resource.data.dernekId);
+      allow create: if adminOrPlatformOfRequest();
+      allow update: if aktifUyeOfResource() || adminOrPlatformOfResource();
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    // ── Ödünç almalar ────────────────────────────────────────────────────────
+
+    match /oduncAlmalar/{id} {
+      allow read: if aktifUyeOfResource();
+
+      // Oluşturma: aktif üye kendi adına veya yönetici / platform
+      allow create: if adminOrPlatformOfRequest()
+        || (aktifUyeOfRequest() && request.resource.data.kullaniciId == request.auth.uid);
+
+      // İade: kendi kaydı veya admin
+      allow update: if signedIn() && (
+        adminOrPlatformOfResource()
+        || (aktifUyeOfResource() && resource.data.kullaniciId == request.auth.uid)
+      );
+
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    // ── Burs programları ─────────────────────────────────────────────────────
+
+    match /burslar/{id} {
+      allow read: if tenantRead(resource.data.dernekId);
+      allow create: if adminOrPlatformOfRequest();
+      allow update: if adminOrPlatformOfResource();
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    // ── Burs başvuruları ─────────────────────────────────────────────────────
+
+    match /bursBasvurulari/{id} {
+      // Okuma: kendi başvurusu veya dernek admini
+      allow read: if signedIn() && (
+        resource.data.kullaniciId == request.auth.uid
+        || dernekAdmin(resource.data.dernekId)
+        || platformAdmin()
+      );
+
+      // Oluşturma: aktif üye kendi adına veya yönetici / platform
+      allow create: if adminOrPlatformOfRequest()
+        || (aktifUyeOfRequest() && request.resource.data.kullaniciId == request.auth.uid);
+
+      // Güncelleme: kendi başvurusunda IBAN güncellemesi, veya admin durum değişikliği
+      allow update: if signedIn() && (
+        adminOrPlatformOfResource()
+        || (
+          aktifUyeOfResource()
+          && resource.data.kullaniciId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['iban', 'ibanGuncellenmeTarihi'])
+        )
+      );
+
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    // ── Etkinlikler ──────────────────────────────────────────────────────────
+
+    match /etkinlikler/{id} {
+      allow read: if tenantRead(resource.data.dernekId);
+
+      // Oluşturma: aktif üye veya yönetici / platform
+      allow create: if adminOrPlatformOfRequest()
+        || (aktifUyeOfRequest() && request.resource.data.organizatorId == request.auth.uid);
+
+      // Güncelleme: katılım/ayrılma (katilimcilar alanı), veya admin
+      allow update: if signedIn() && (
+        adminOrPlatformOfResource()
+        || (
+          aktifUyeOfResource()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['katilimcilar'])
+        )
+      );
+
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    // ── Duyurular ────────────────────────────────────────────────────────────
+
+    match /duyurular/{id} {
+      allow read: if tenantRead(resource.data.dernekId);
+      allow create: if adminOrPlatformOfRequest();
+      allow update: if adminOrPlatformOfResource();
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    // ── Aidat ödemeleri ──────────────────────────────────────────────────────
+
+    match /aidatOdemeleri/{id} {
+      // Okuma: kendi kaydı veya dernek admini
+      allow read: if signedIn() && (
+        resource.data.kullaniciId == request.auth.uid
+        || dernekAdmin(resource.data.dernekId)
+        || platformAdmin()
+      );
+
+      // Oluşturma: aktif üye veya admin (aylık satır oluşturma)
+      allow create: if aktifUyeOfRequest() || adminOrPlatformOfRequest();
+
+      // Güncelleme: kendi dekontunu yükler (dekontUri alanı), veya admin onay/red
+      allow update: if signedIn() && (
+        adminOrPlatformOfResource()
+        || (
+          aktifUyeOfResource()
+          && resource.data.kullaniciId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['dekontUri', 'dekontYuklenmeTarihi', 'redAciklamasi'])
+        )
+      );
+
+      allow delete: if adminOfResource();
+    }
+
+    // ── Gönüllü görevler ─────────────────────────────────────────────────────
+
+    match /gonulluGorevler/{id} {
+      allow read: if tenantRead(resource.data.dernekId);
+      allow create: if adminOrPlatformOfRequest();
+      allow update: if adminOrPlatformOfResource();
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    match /gonulluBasvurular/{id} {
+      allow read: if signedIn() && (
+        resource.data.kullaniciId == request.auth.uid
+        || dernekAdmin(resource.data.dernekId)
+        || platformAdmin()
+      );
+      allow create: if adminOrPlatformOfRequest()
+        || (aktifUyeOfRequest() && request.resource.data.kullaniciId == request.auth.uid);
+      allow update: if adminOrPlatformOfResource();
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    // ── Envanter ─────────────────────────────────────────────────────────────
+
+    match /envanterler/{id} {
+      allow read: if tenantAktifRead(resource.data.dernekId);
+      allow create: if adminOrPlatformOfRequest();
+      allow update: if adminOrPlatformOfResource() || aktifUyeOfResource();
+      allow delete: if adminOrPlatformOfResource();
+    }
+
+    match /envanterZimmetler/{id} {
+      allow read: if tenantAktifRead(resource.data.dernekId);
+      allow create: if aktifUyeOfRequest()
+        && (request.resource.data.kullaniciId == request.auth.uid || adminOrPlatformOfRequest());
+      allow update: if adminOrPlatformOfResource()
+        || (aktifUyeOfResource() && resource.data.kullaniciId == request.auth.uid);
+      allow delete: if adminOfResource();
+    }
+
+    // ── Kullanıcı bildirimleri (hatırlatma) ─────────────────────────────────
+
+    match /kullaniciBildirimleri/{id} {
+      allow read: if signedIn() && (
+        resource.data.kullaniciId == request.auth.uid
+        || dernekAdmin(resource.data.dernekId)
+        || platformAdmin()
+      );
+      allow create: if adminOrPlatformOfRequest();
+      allow update: if signedIn() && (
+        adminOrPlatformOfResource()
+        || (
+          resource.data.kullaniciId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['okundu'])
+        )
+      );
+      allow delete: if adminOrPlatformOfResource();
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, KeyboardAvoidingView, Platform, Alert, StatusBar, Image,
+  ScrollView, KeyboardAvoidingView, Platform, Alert, StatusBar,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -10,12 +10,13 @@ import { useAuth } from '../../context/AuthContext';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { Colors } from '../../constants/colors';
 import { firebaseAuthHataMetni } from '../../utils/firebaseAuthTr';
+import AuthBrandingHeader from '../../components/auth/AuthBrandingHeader';
 
 type NavProp = NativeStackNavigationProp<AuthStackParamList, 'Giris'>;
 
 export default function LoginScreen() {
   const navigation = useNavigation<NavProp>();
-  const { girisYap } = useAuth();
+  const { girisYap, girisMarkasi } = useAuth();
   const [email, setEmail] = useState('');
   const [sifre, setSifre] = useState('');
   const [sifreGoster, setSifreGoster] = useState(false);
@@ -43,18 +44,7 @@ export default function LoginScreen() {
     >
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Image
-              source={require('../../../assets/kule-logo.png')}
-              style={styles.logoImage}
-              resizeMode="contain"
-              accessibilityLabel="Kule Sakinleri logosu"
-            />
-          </View>
-          <Text style={styles.derneAdi}>KULE SAKİNLERİ</Text>
-          <Text style={styles.altBaslik}>Rol Yapma ve Masa Üstü Strateji{'\n'}Oyunları Derneği</Text>
-        </View>
+        <AuthBrandingHeader marka={girisMarkasi} />
 
         <View style={styles.form}>
           <Text style={styles.formBaslik}>Giriş</Text>
@@ -109,16 +99,21 @@ export default function LoginScreen() {
               <Text style={styles.girisButtonText}>Giriş Yap</Text>
             )}
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.kayitLink}
-            onPress={() => navigation.navigate('Kayit')}
-          >
-            <Text style={styles.kayitLinkText}>
-              Hesabınız yok mu? <Text style={styles.kayitLinkVurgu}>Kayıt Olun</Text>
-            </Text>
-          </TouchableOpacity>
         </View>
+
+        <TouchableOpacity
+          style={styles.kayitCta}
+          onPress={() => navigation.navigate('Kayit', {})}
+        >
+          <Text style={styles.kayitCtaText}>Kayıt ol</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.basvuruFooter}
+          onPress={() => navigation.navigate('MisafirDernekBasvuru')}
+        >
+          <Text style={styles.basvuruFooterText}>Yeni dernek için başvuru</Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -133,35 +128,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  logoContainer: {
-    width: 128,
-    height: 128,
-    marginBottom: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoImage: {
-    width: '100%',
-    height: '100%',
-  },
-  derneAdi: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.gold,
-    letterSpacing: 3,
-    textAlign: 'center',
-  },
-  altBaslik: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 6,
-    lineHeight: 20,
+    paddingBottom: 40,
   },
   form: {
     backgroundColor: Colors.surface,
@@ -225,16 +192,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  kayitLink: {
-    marginTop: 16,
+  kayitCta: {
+    marginTop: 20,
+    height: 52,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.primaryLight,
+    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'transparent',
   },
-  kayitLinkText: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-  },
-  kayitLinkVurgu: {
+  kayitCtaText: {
     color: Colors.primaryLight,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  basvuruFooter: {
+    marginTop: 28,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  basvuruFooterText: {
+    fontSize: 15,
     fontWeight: '600',
+    color: Colors.textMuted,
+    textDecorationLine: 'underline',
   },
 });

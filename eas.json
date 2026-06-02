@@ -1,0 +1,63 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyA8yX-ypj_l9dZXB3CF_dsTpT0H6EqjJmw",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "kuleapp-c5a33.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "kuleapp-c5a33",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "kuleapp-c5a33.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "595356823559",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:595356823559:web:1887a0c971e8267458faa2"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyA8yX-ypj_l9dZXB3CF_dsTpT0H6EqjJmw",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "kuleapp-c5a33.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "kuleapp-c5a33",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "kuleapp-c5a33.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "595356823559",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:595356823559:web:1887a0c971e8267458faa2"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "simulator": false
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./google-services-key.json",
+        "track": "internal"
+      },
+      "ios": {
+        "appleId": "your-apple-id@example.com",
+        "ascAppId": "YOUR_ASC_APP_ID",
+        "appleTeamId": "YOUR_APPLE_TEAM_ID"
+      }
+    }
+  }
+}

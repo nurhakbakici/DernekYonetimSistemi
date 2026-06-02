@@ -1,21 +1,28 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, KeyboardAvoidingView, Platform, Alert, StatusBar, Image,
+  ScrollView, KeyboardAvoidingView, Platform, Alert, StatusBar,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { Colors } from '../../constants/colors';
 import { firebaseAuthHataMetni } from '../../utils/firebaseAuthTr';
+import AuthBrandingHeader from '../../components/auth/AuthBrandingHeader';
+import DernekSecimDropdown from '../../components/auth/DernekSecimDropdown';
+import type { KayitDernekOzeti } from '../../types';
 
 type NavProp = NativeStackNavigationProp<AuthStackParamList, 'Kayit'>;
+type KayitRoute = RouteProp<AuthStackParamList, 'Kayit'>;
 
 export default function RegisterScreen() {
   const navigation = useNavigation<NavProp>();
-  const { kayitOl } = useAuth();
+  const route = useRoute<KayitRoute>();
+  const { kayitOl, girisMarkasi, kayitIcinAktifDernekListesi } = useAuth();
+  const yeniDernekBasvuru = route.params?.yeniDernekBasvuru === true;
+
   const [ad, setAd] = useState('');
   const [soyad, setSoyad] = useState('');
   const [email, setEmail] = useState('');
@@ -24,7 +31,34 @@ export default function RegisterScreen() {
   const [sifreTekrar, setSifreTekrar] = useState('');
   const [sifreGoster, setSifreGoster] = useState(false);
   const [yukleniyor, setYukleniyor] = useState(false);
+  const [dernekler, setDernekler] = useState<KayitDernekOzeti[]>([]);
+  const [derneklerYukleniyor, setDerneklerYukleniyor] = useState(false);
+  const [secilenDernekId, setSecilenDernekId] = useState<string | null>(null);
   const islemdeRef = useRef(false);
+
+  const dernekleriYukle = useCallback(async () => {
+    if (yeniDernekBasvuru) return;
+    setDerneklerYukleniyor(true);
+    try {
+      const liste = await kayitIcinAktifDernekListesi();
+      setDernekler(liste);
+      if (liste.length === 0) {
+        Alert.alert(
+          'Dernek listesi boş',
+          'Şu an kayıt için açık dernek bulunmuyor. Daha sonra tekrar deneyin veya yönetici ile iletişime geçin.',
+        );
+      }
+    } catch {
+      Alert.alert('Hata', 'Dernek listesi yüklenemedi. İnternet bağlantınızı veya Firestore kurallarını kontrol edin.');
+      setDernekler([]);
+    } finally {
+      setDerneklerYukleniyor(false);
+    }
+  }, [kayitIcinAktifDernekListesi, yeniDernekBasvuru]);
+
+  useEffect(() => {
+    void dernekleriYukle();
+  }, [dernekleriYukle]);
 
   const handleKayit = async () => {
     if (islemdeRef.current) return;
@@ -40,16 +74,35 @@ export default function RegisterScreen() {
       Alert.alert('Hata', 'Şifreler eşleşmiyor.');
       return;
     }
-
+    if (!yeniDernekBasvuru && !secilenDernekId) {
+      Alert.alert('Dernek seçin', 'Açılır listeden üye olmak istediğiniz derneği seçin.');
+      return;
+    }
     islemdeRef.current = true;
     setYukleniyor(true);
     try {
-      await kayitOl(ad.trim(), soyad.trim(), email.trim(), sifre, telefon.trim() || undefined);
-      Alert.alert(
-        'Kayıt Tamamlandı',
-        'Hesabınız aday üye olarak oluşturuldu. Aynı e-posta ve şifre ile giriş yaparak dernek durumunu ve etkinlikleri görebilirsiniz. Tam üyelik ve diğer haklar için yönetici onayı gereklidir.',
-        [{ text: 'Giriş ekranına git', onPress: () => navigation.navigate('Giris') }]
-      );
+      if (yeniDernekBasvuru) {
+        await kayitOl(ad.trim(), soyad.trim(), email.trim(), sifre, {
+          telefon: telefon.trim() || undefined,
+          yalnizcaProfil: true,
+        });
+        Alert.alert(
+          'Kayıt tamamlandı',
+          'Giriş yaptıktan sonra yeni dernek başvuru formuna yönlendirileceksiniz.',
+          [{ text: 'Giriş ekranına git', onPress: () => navigation.navigate('Giris') }],
+        );
+      } else {
+        await kayitOl(ad.trim(), soyad.trim(), email.trim(), sifre, {
+          telefon: telefon.trim() || undefined,
+          dernekId: secilenDernekId ?? undefined,
+        });
+        const adDer = dernekler.find((d) => d.id === secilenDernekId)?.ad ?? 'Seçtiğiniz dernek';
+        Alert.alert(
+          'Kayıt tamamlandı',
+          `${adDer} için aday üyeliğiniz oluşturuldu. Aynı e-posta ve şifre ile giriş yaparak derneği kullanmaya başlayabilirsiniz; tam haklar yönetici onayına bağlıdır.`,
+          [{ text: 'Giriş ekranına git', onPress: () => navigation.navigate('Giris') }],
+        );
+      }
     } catch (error: unknown) {
       Alert.alert('Kayıt Hatası', firebaseAuthHataMetni(error));
     } finally {
@@ -69,17 +122,27 @@ export default function RegisterScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.geriButton}>
             <Ionicons name="arrow-back" size={24} color={Colors.text} />
           </TouchableOpacity>
-          <View style={styles.logoContainer}>
-            <Image
-              source={require('../../../assets/kule-logo.png')}
-              style={styles.logoImage}
-              resizeMode="contain"
-              accessibilityLabel="Kule Sakinleri logosu"
-            />
-          </View>
-          <Text style={styles.baslik}>Yeni Üye Kaydı</Text>
-          <Text style={styles.altBaslik}>Kule Sakinleri ailesine katılın</Text>
+          <AuthBrandingHeader marka={girisMarkasi} kayitModu />
         </View>
+
+        {yeniDernekBasvuru && (
+          <View style={styles.bilgiKutu}>
+            <Text style={styles.bilgiKutuText}>
+              Bu kayıt yalnızca platformda yeni bir dernek açmak içindir. Dernek seçmeniz gerekmez; girişten sonra
+              başvuru formunu doldurursunuz.
+            </Text>
+          </View>
+        )}
+
+        {!yeniDernekBasvuru && (
+          <DernekSecimDropdown
+            dernekler={dernekler}
+            secilenId={secilenDernekId}
+            onSecim={setSecilenDernekId}
+            yukleniyor={derneklerYukleniyor}
+            aciklama="Dernek yöneticileri başvurunuzu inceleyecek; onay sonrası tam üyelik ve tüm özellikler açılır."
+          />
+        )}
 
         <View style={styles.form}>
           <View style={styles.row}>
@@ -162,7 +225,9 @@ export default function RegisterScreen() {
           <View style={styles.bilgi}>
             <Ionicons name="information-circle-outline" size={16} color={Colors.info} />
             <Text style={styles.bilgiText}>
-              Üyeliğiniz yönetim kurulu onayından sonra aktifleşecektir.
+              {yeniDernekBasvuru
+                ? 'Hesap oluşturulduktan sonra giriş yapıp dernek başvuru formunu tamamlayın.'
+                : 'Aday üyeliğiniz seçtiğiniz dernek yönetimi tarafından onaylandığında tam üyeliğe geçer.'}
             </Text>
           </View>
 
@@ -193,26 +258,23 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scroll: { flexGrow: 1, padding: 24, paddingTop: 60 },
-  header: { alignItems: 'center', marginBottom: 32 },
+  header: { alignItems: 'center', marginBottom: 20, position: 'relative', width: '100%', paddingTop: 44 },
   geriButton: {
     position: 'absolute',
     left: 0,
     top: 0,
     padding: 8,
+    zIndex: 2,
   },
-  logoContainer: {
-    width: 112,
-    height: 112,
-    marginBottom: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
+  bilgiKutu: {
+    marginBottom: 16,
+    padding: 14,
+    backgroundColor: Colors.warning + '18',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.warning + '40',
   },
-  logoImage: {
-    width: '100%',
-    height: '100%',
-  },
-  baslik: { fontSize: 22, fontWeight: '700', color: Colors.text },
-  altBaslik: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
+  bilgiKutuText: { fontSize: 13, color: Colors.textSecondary, lineHeight: 20 },
   form: {
     backgroundColor: Colors.surface,
     borderRadius: 20,

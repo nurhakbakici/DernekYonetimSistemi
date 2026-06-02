@@ -1,17 +1,16 @@
-import React, { Fragment } from 'react';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import AuthNavigator from './AuthNavigator';
+import OnboardingNavigator from './OnboardingNavigator';
 import MainNavigator from './MainNavigator';
 import DuyuruNotificationBridge from '../components/DuyuruNotificationBridge';
+import KullaniciBildirimBridge from '../components/KullaniciBildirimBridge';
 import AidatIlkYuklemeBridge from '../components/AidatIlkYuklemeBridge';
 
-const Stack = createNativeStackNavigator();
-
 export default function AppNavigator() {
-  const { kullanici, yukleniyor } = useAuth();
+  const { kullanici, yukleniyor, oturumAcik } = useAuth();
 
   if (yukleniyor) {
     return <LoadingSpinner mesaj="Yükleniyor..." />;
@@ -19,14 +18,17 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer>
-      {kullanici ? (
-        <Fragment>
+      {!oturumAcik ? (
+        <AuthNavigator />
+      ) : !kullanici ? (
+        <OnboardingNavigator />
+      ) : (
+        <>
           <MainNavigator />
           <AidatIlkYuklemeBridge />
           <DuyuruNotificationBridge />
-        </Fragment>
-      ) : (
-        <AuthNavigator />
+          <KullaniciBildirimBridge />
+        </>
       )}
     </NavigationContainer>
   );

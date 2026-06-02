@@ -1,21 +1,35 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+/**
+ * Tüm AsyncStorage anahtarları tek yerde tanımlı.
+ * Prefix: @dernekapp_ — uygulama genelinde standart.
+ */
 const KEYS = {
-  USERS: '@kule_users',
-  ODALAR: '@kule_odalar',
-  REZERVASYONLAR: '@kule_rezervasyonlar',
-  KITAPLAR: '@kule_kitaplar',
-  ODUNC_ALMALAR: '@kule_odunc',
-  BURSLAR: '@kule_burslar',
-  BURS_BASVURULARI: '@kule_burs_basvuru',
-  ETKINLIKLER: '@kule_etkinlikler',
-  DERNEK_DURUMU: '@kule_durum',
-  AIDAT_ODEMELERI: '@kule_aidat',
+  USERS: '@dernekapp_users',
+  ODALAR: '@dernekapp_odalar',
+  REZERVASYONLAR: '@dernekapp_rezervasyonlar',
+  KITAPLAR: '@dernekapp_kitaplar',
+  ODUNC_ALMALAR: '@dernekapp_odunc',
+  BURSLAR: '@dernekapp_burslar',
+  BURS_BASVURULARI: '@dernekapp_burs_basvuru',
+  GONULLU_GOREVLER: '@dernekapp_gonullu_gorev',
+  GONULLU_BASVURULAR: '@dernekapp_gonullu_basvuru',
+  ENVANTER: '@dernekapp_envanter',
+  ENVANTER_ZIMMET: '@dernekapp_envanter_zimmet',
+  ETKINLIKLER: '@dernekapp_etkinlikler',
+  DERNEK_DURUMU: '@dernekapp_durum',
+  AIDAT_ODEMELERI: '@dernekapp_aidat',
   /** Tek belge: { miktar: number } — aylık dernek aidatı */
-  AIDAT_AYLIK_MIKTAR: '@kule_aidat_aylik_miktar',
-  DUYURULAR: '@kule_duyurular',
-  CURRENT_USER: '@kule_current_user',
-  INITIALIZED: '@kule_initialized',
+  AIDAT_AYLIK_MIKTAR: '@dernekapp_aidat_aylik_miktar',
+  DUYURULAR: '@dernekapp_duyurular',
+  CURRENT_USER: '@dernekapp_current_user',
+  /** Firebase: son seçilen dernek (çoklu üyelik). */
+  AKTIF_DERNEK_ID: '@dernekapp_aktif_dernek_id',
+  /** Çıkış öncesi son aktif dernek adı + logo + slug (giriş ekranı markası). */
+  SON_DERNEK_MARKA: '@dernekapp_son_dernek',
+  /** Girişten sonra dernek başvuru formuna yönlendir. */
+  DERNEK_BASVURU_NIYETI: '@dernekapp_basvuru_niyet',
+  INITIALIZED: '@dernekapp_initialized',
 };
 
 export async function getItem<T>(key: string): Promise<T | null> {

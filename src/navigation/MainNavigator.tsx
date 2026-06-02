@@ -23,6 +23,7 @@ import AddEventScreen from '../screens/events/AddEventScreen';
 import EditEventScreen from '../screens/events/EditEventScreen';
 import MembershipScreen from '../screens/membership/MembershipScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+import PlatformDernekOnayScreen from '../screens/onboarding/PlatformDernekOnayScreen';
 import ChangePasswordScreen from '../screens/profile/ChangePasswordScreen';
 import AdminScreen from '../screens/admin/AdminScreen';
 import AdminReservationsScreen from '../screens/admin/AdminReservationsScreen';
@@ -35,6 +36,14 @@ import AddRoomScreen from '../screens/rooms/AddRoomScreen';
 import AddScholarshipScreen from '../screens/scholarships/AddScholarshipScreen';
 import DuyurularScreen from '../screens/announcements/DuyurularScreen';
 import AdminDuyurularScreen from '../screens/admin/AdminDuyurularScreen';
+import VolunteerTasksScreen from '../screens/volunteers/VolunteerTasksScreen';
+import VolunteerTaskDetailScreen from '../screens/volunteers/VolunteerTaskDetailScreen';
+import AddVolunteerTaskScreen from '../screens/volunteers/AddVolunteerTaskScreen';
+import AdminVolunteerScreen from '../screens/admin/AdminVolunteerScreen';
+import InventoryScreen from '../screens/inventory/InventoryScreen';
+import InventoryDetailScreen from '../screens/inventory/InventoryDetailScreen';
+import AddInventoryScreen from '../screens/inventory/AddInventoryScreen';
+import AdminInventoryScreen from '../screens/admin/AdminInventoryScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -95,6 +104,7 @@ function ProfileStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="ProfileMain" component={ProfileScreen} />
+      <Stack.Screen name="PlatformDernekOnay" component={PlatformDernekOnayScreen} />
       <Stack.Screen name="SifreDegistir" component={ChangePasswordScreen} />
       <Stack.Screen name="Membership" component={MembershipScreen} />
       <Stack.Screen name="Admin" component={AdminScreen} />
@@ -106,15 +116,27 @@ function ProfileStack() {
       <Stack.Screen name="AdminAddScholarship" component={AddScholarshipScreen} />
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} />
       <Stack.Screen name="AdminDuyurular" component={AdminDuyurularScreen} />
+      <Stack.Screen name="VolunteerTasks" component={VolunteerTasksScreen} />
+      <Stack.Screen name="VolunteerTaskDetail" component={VolunteerTaskDetailScreen} />
+      <Stack.Screen name="AddVolunteerTask" component={AddVolunteerTaskScreen} />
+      <Stack.Screen name="AdminVolunteer" component={AdminVolunteerScreen} />
+      <Stack.Screen name="Inventory" component={InventoryScreen} />
+      <Stack.Screen name="InventoryDetail" component={InventoryDetailScreen} />
+      <Stack.Screen name="AddInventory" component={AddInventoryScreen} />
+      <Stack.Screen name="AdminInventory" component={AdminInventoryScreen} />
     </Stack.Navigator>
   );
 }
 
 export default function MainNavigator() {
   const insets = useSafeAreaInsets();
-  const { kullanici } = useAuth();
+  const { kullanici, paketAktif } = useAuth();
   const tabBarBottomPad = Math.max(insets.bottom, 10);
   const tamErisim = tamUyeOzelliklerineErisir(kullanici);
+  const gosterOdalar = tamErisim && paketAktif('odalar');
+  const gosterKutuphane = tamErisim && paketAktif('kutuphane');
+  const gosterEtkinlikler = paketAktif('etkinlikler');
+  const gosterBurslar = paketAktif('burslar');
 
   return (
     <Tab.Navigator
@@ -150,14 +172,18 @@ export default function MainNavigator() {
       })}
     >
       <Tab.Screen name="Ana" component={HomeStack} options={{ tabBarLabel: 'Ana Sayfa' }} />
-      {tamErisim && (
-        <>
-          <Tab.Screen name="Odalar" component={RoomsStack} options={{ tabBarLabel: 'Odalar' }} />
-          <Tab.Screen name="Kutuphane" component={LibraryStack} options={{ tabBarLabel: 'Kütüphane' }} />
-        </>
+      {gosterOdalar && (
+        <Tab.Screen name="Odalar" component={RoomsStack} options={{ tabBarLabel: 'Odalar' }} />
       )}
-      <Tab.Screen name="Etkinlikler" component={EventsStack} options={{ tabBarLabel: 'Etkinlikler' }} />
-      <Tab.Screen name="Burslar" component={ScholarshipsStack} options={{ tabBarLabel: 'Burslar' }} />
+      {gosterKutuphane && (
+        <Tab.Screen name="Kutuphane" component={LibraryStack} options={{ tabBarLabel: 'Kütüphane' }} />
+      )}
+      {gosterEtkinlikler && (
+        <Tab.Screen name="Etkinlikler" component={EventsStack} options={{ tabBarLabel: 'Etkinlikler' }} />
+      )}
+      {gosterBurslar && (
+        <Tab.Screen name="Burslar" component={ScholarshipsStack} options={{ tabBarLabel: 'Burslar' }} />
+      )}
       <Tab.Screen
         name="Profil"
         component={ProfileStack}

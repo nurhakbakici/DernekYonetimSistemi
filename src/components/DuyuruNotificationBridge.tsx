@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { onSnapshot, query, collection, orderBy, limit } from 'firebase/firestore';
+import { onSnapshot, query, collection, orderBy, limit, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { db, IS_FIREBASE_CONFIGURED } from '../config/firebase';
@@ -32,7 +32,7 @@ async function notificationsModulu(): Promise<NotificationsModule | null> {
 }
 
 function lastBildirStorageKey(kullaniciId: string) {
-  return `@kule_last_duyuru_bildir_${kullaniciId}`;
+  return `@dernekapp_notif_duyuru_${kullaniciId}`;
 }
 
 async function bildirDuyuru(duyuru: Duyuru) {
@@ -62,7 +62,7 @@ async function bildirDuyuru(duyuru: Duyuru) {
  * Yerel modda: periyodik yükleme + yeni üst kayıt algılama.
  */
 export default function DuyuruNotificationBridge() {
-  const { kullanici } = useAuth();
+  const { kullanici, aktifDernekId } = useAuth();
   const { duyurular, duyuruYukle } = useData();
   const ilkSnapshot = useRef(true);
   const appState = useRef(AppState.currentState);
@@ -107,7 +107,14 @@ export default function DuyuruNotificationBridge() {
     if (!kullanici?.id || Platform.OS === 'web') return;
 
     if (IS_FIREBASE_CONFIGURED) {
-      const q = query(collection(db, 'duyurular'), orderBy('olusturulmaTarihi', 'desc'), limit(25));
+      // Yalnızca aktif dernekteki duyurular dinlenir — çapraz kiracı bildirim sızıntısını önler.
+      if (!aktifDernekId) return;
+      const q = query(
+        collection(db, 'duyurular'),
+        where('dernekId', '==', aktifDernekId),
+        orderBy('olusturulmaTarihi', 'desc'),
+        limit(25),
+      );
       const unsub = onSnapshot(q, async (snap) => {
         if (ilkSnapshot.current) {
           ilkSnapshot.current = false;
@@ -133,7 +140,7 @@ export default function DuyuruNotificationBridge() {
       void duyuruYukle();
     }, 45000);
     return () => clearInterval(iv);
-  }, [duyuruYukle, kullanici?.id]);
+  }, [duyuruYukle, kullanici?.id, aktifDernekId]);
 
   useEffect(() => {
     if (!kullanici?.id || Platform.OS === 'web' || IS_FIREBASE_CONFIGURED) return;

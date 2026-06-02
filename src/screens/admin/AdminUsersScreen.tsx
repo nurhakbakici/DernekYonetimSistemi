@@ -170,7 +170,11 @@ export default function AdminUsersScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader baslik="Üye Yönetimi" altBaslik={`${kullanicilar.length} kullanıcı`} geriButon />
+      <ScreenHeader
+        baslik="Üye Yönetimi"
+        altBaslik={`${kullanicilar.length} kullanıcı · Adayları «Tam üye yap» veya «Aktif Et» ile onaylayın`}
+        geriButon
+      />
       <FlatList
         data={siralanan}
         keyExtractor={item => item.id}

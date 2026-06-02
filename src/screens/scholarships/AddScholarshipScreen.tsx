@@ -5,6 +5,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
 import { Colors } from '../../constants/colors';
 import ScreenHeader from '../../components/common/ScreenHeader';
 import { FormDatePicker } from '../../components/common/FormDateTimePickers';
@@ -19,7 +20,8 @@ export default function AddScholarshipScreen() {
   const [aciklama, setAciklama] = useState('');
   const [miktar, setMiktar] = useState('');
   const [programSuresiAy, setProgramSuresiAy] = useState('12');
-  const [saglayanKurum, setSaglayanKurum] = useState('Kule Sakinleri Derneği');
+  const { aktifDernek } = useAuth();
+  const [saglayanKurum, setSaglayanKurum] = useState(() => aktifDernek?.ad ?? '');
   const [sonBasvuruTarihi, setSonBasvuruTarihi] = useState('');
   const [gereksinim, setGereksinim] = useState('');
   const [gereksinimler, setGereksinimler] = useState<string[]>([]);

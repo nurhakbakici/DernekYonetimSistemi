@@ -1,36 +1,34 @@
-﻿import React, { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
+﻿import React, {
+  createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode,
+} from 'react';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc,
-  doc, setDoc, query, where, orderBy, getDoc, deleteField, writeBatch,
+  doc, query, where, orderBy, getDoc, deleteField, writeBatch,
 } from 'firebase/firestore';
 import {
   Oda, Rezervasyon, Kitap, OduncAlma, Burs, BursBasvurusu,
   Etkinlik, EtkinlikDetayAlanlari, EtkinlikGorselSecenek, DernekDurumu, AidatOdemesi, User, Duyuru, DuyuruGorselSecenek,
+  GonulluGorev, GonulluBasvuru, Envanter, EnvanterZimmet,
 } from '../types';
+import { useGonullulukEnvanterSlice } from './gonullulukEnvanterSlice';
 import { normalizeUserRole } from '../utils/userAccess';
 import { db, IS_FIREBASE_CONFIGURED } from '../config/firebase';
+import { useAuth } from './AuthContext';
+import { uyelikBelgeId } from '../utils/tenantIds';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getItem, setItem, KEYS } from '../config/storage';
 import { AIDAT_VARSAYILAN_MIKTAR } from '../constants/aidat';
 import { aylarBaslangictanSimdiye, aySonOdemeTarihi } from '../utils/aidatAylik';
 import { yerelGorseliDataUriye } from '../utils/gorselDataUri';
+import { uploadFileToStorage, timestampedFileName } from '../utils/storageUpload';
 import { oduncGecikmeDegisenler, oduncKayitlarindaGecikmeleriIsle } from '../utils/oduncGecikme';
 import { ibanGecerliTr, ibanNormalizeTr } from '../utils/iban';
 
 // ─── Firestore yardımcıları ────────────────────────────────────────────────────
 
-async function fsGetAll<T>(col: string): Promise<T[]> {
-  const snap = await getDocs(collection(db, col));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as T));
-}
-
 async function fsAdd<T extends { id?: string }>(col: string, data: Omit<T, 'id'>): Promise<string> {
   const ref = await addDoc(collection(db, col), data);
   return ref.id;
-}
-
-async function fsSet(col: string, id: string, data: object) {
-  await setDoc(doc(db, col, id), data);
 }
 
 async function fsUpdate(col: string, id: string, data: object) {
@@ -39,6 +37,12 @@ async function fsUpdate(col: string, id: string, data: object) {
 
 async function fsDelete(col: string, id: string) {
   await deleteDoc(doc(db, col, id));
+}
+
+async function fsGetAllTenant<T>(col: string, dernekId: string | null): Promise<T[]> {
+  if (!dernekId) return [];
+  const snap = await getDocs(query(collection(db, col), where('dernekId', '==', dernekId)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as T));
 }
 
 function normalizeOdendi(v: unknown): boolean {
@@ -101,15 +105,12 @@ function uygulaEtkinlikDetayPatch(
   return next;
 }
 
-type DuyuruGorselKayitSonuc = { dataUri: string };
-
 /**
- * Gorseli 480 px genislige kucultup JPEG q=0.45 ile base64 data URI uretir.
- * Firebase Storage kullanmaz -- veri gorselUri olarak Firestore dokumana yazilir.
+ * Görseli Firebase Storage'a yükler; yapılandırılmamışsa data URI fallback.
+ * storagePath: "duyuruGorseller/{dernekId}/{dosyaAdi}"
  */
-async function duyuruGorseliKaydet(yerelUri: string): Promise<DuyuruGorselKayitSonuc> {
-  const dataUri = await yerelGorseliDataUriye(yerelUri);
-  return { dataUri };
+async function gorselUrlKaydet(yerelUri: string, storagePath: string): Promise<string> {
+  return uploadFileToStorage(yerelUri, storagePath);
 }
 
 // ─── Context tipi ─────────────────────────────────────────────────────────────
@@ -210,6 +211,34 @@ interface DataContextType {
   kullanicilar: User[];
   kullaniciYukle: () => Promise<void>;
   kullaniciGuncelle: (id: string, veri: Partial<User>) => Promise<void>;
+
+  gonulluGorevler: GonulluGorev[];
+  gonulluBasvurular: GonulluBasvuru[];
+  gonulluGorevYukle: () => Promise<void>;
+  gonulluBasvuruYukle: () => Promise<void>;
+  gonulluGorevEkle: (gorev: Omit<GonulluGorev, 'id' | 'olusturulmaTarihi'>) => Promise<void>;
+  gonulluGorevGuncelle: (id: string, veri: Partial<GonulluGorev>) => Promise<void>;
+  gonulluGorevSil: (id: string) => Promise<void>;
+  gonulluBasvur: (gorevId: string, gorevBaslik: string, kullaniciId: string, kullaniciAdi: string) => Promise<void>;
+  gonulluBasvuruGuncelle: (id: string, durum: GonulluBasvuru['durum']) => Promise<void>;
+  onayliGonulluSayisi: (gorevId: string) => number;
+
+  envanterKayitlari: Envanter[];
+  envanterZimmetler: EnvanterZimmet[];
+  envanterYukle: () => Promise<void>;
+  envanterZimmetYukle: () => Promise<void>;
+  envanterEkle: (kayit: Omit<Envanter, 'id' | 'olusturulmaTarihi'>) => Promise<void>;
+  envanterGuncelle: (id: string, veri: Partial<Envanter>) => Promise<void>;
+  envanterSil: (id: string) => Promise<void>;
+  envanterZimmetVer: (
+    envanterId: string,
+    envanterAd: string,
+    kullaniciId: string,
+    kullaniciAdi: string,
+    planlananIade?: string,
+    not?: string,
+  ) => Promise<void>;
+  envanterZimmetIade: (zimmetId: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -234,16 +263,84 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [aidatAylikMiktari, setAidatAylikMiktari] = useState(AIDAT_VARSAYILAN_MIKTAR);
   const [kullanicilar, setKullanicilar] = useState<User[]>([]);
 
+  const authTenant = useAuth();
+  const tenantId = IS_FIREBASE_CONFIGURED
+    ? (authTenant.aktifDernekId ?? authTenant.kullanici?.dernekId ?? null)
+    : null;
+  const tenantIdRef = useRef<string | null>(tenantId);
+  tenantIdRef.current = tenantId;
+
+  useEffect(() => {
+    if (!IS_FIREBASE_CONFIGURED) return;
+    setOdalar([]);
+    setRezervasyanlar([]);
+    setKitaplar([]);
+    setOduncAlmalar([]);
+    setBurslar([]);
+    setBursBasvurulari([]);
+    setEtkinlikler([]);
+    setDuyurular([]);
+    setAidatOdemeleri([]);
+    setKullanicilar([]);
+    setDernekDurumu(null);
+  }, [tenantId]);
+
   // ── Genel yükle/kaydet yardımcıları ────────────────────────────────────────
 
   async function yukle<T>(fsCol: string, localKey: string, setter: (v: T[]) => void) {
+    const tid = IS_FIREBASE_CONFIGURED ? tenantIdRef.current : null;
     if (IS_FIREBASE_CONFIGURED) {
-      const data = await fsGetAll<T>(fsCol);
+      const data = await fsGetAllTenant<T>(fsCol, tid);
       setter(data);
     } else {
       const data = await getItem<T[]>(localKey);
       setter(data || []);
     }
+  }
+
+  const gonullulukEnvanter = useGonullulukEnvanterSlice({
+    tenantIdRef,
+    yukle,
+    fsAdd,
+    fsUpdate,
+    fsDelete,
+    firestoreTemiz,
+  });
+
+  useEffect(() => {
+    if (!IS_FIREBASE_CONFIGURED) return;
+    gonullulukEnvanter.resetGonullulukEnvanter();
+  }, [tenantId, gonullulukEnvanter.resetGonullulukEnvanter]);
+
+  /** Aktif dernekteki üyeleri `User` listesi olarak döndürür (Firestore çok kiracı). */
+  async function firebaseDernekUyeleriOlarakUserList(): Promise<User[]> {
+    const tid = tenantIdRef.current;
+    if (!tid) return [];
+    const q = query(collection(db, 'uyelikler'), where('dernekId', '==', tid));
+    const snaps = await getDocs(q);
+    const list: User[] = [];
+    for (const d of snaps.docs) {
+      const uy = d.data() as Record<string, unknown>;
+      const uid = String(uy.userId ?? '');
+      const ps = await getDoc(doc(db, 'users', uid));
+      if (!ps.exists()) continue;
+      const p = ps.data() as Record<string, unknown>;
+      const ud = uy.uyelikDurumu;
+      const uyelikDurumu = ud === 'aktif' || ud === 'pasif' || ud === 'beklemede' ? ud : 'beklemede';
+      list.push({
+        id: uid,
+        ad: String(p.ad ?? ''),
+        soyad: String(p.soyad ?? ''),
+        email: String(p.email ?? ''),
+        ...(typeof p.telefon === 'string' ? { telefon: p.telefon } : {}),
+        rol: normalizeUserRole(uy.rol),
+        uyelikDurumu,
+        uyelikBaslangic: String(uy.uyelikBaslangic ?? ''),
+        olusturulmaTarihi: String(p.olusturulmaTarihi ?? ''),
+        dernekId: tid,
+      });
+    }
+    return list;
   }
 
   // ── Odalar ─────────────────────────────────────────────────────────────────
@@ -252,8 +349,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const odaEkle = useCallback(async (oda: Omit<Oda, 'id'>) => {
     if (IS_FIREBASE_CONFIGURED) {
-      const id = await fsAdd('odalar', oda);
-      setOdalar(prev => [...prev, { ...oda, id }]);
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok. Lütfen dernek seçin veya yeniden giriş yapın.');
+      const id = await fsAdd('odalar', { ...oda, dernekId: tid } as Omit<Oda, 'id'>);
+      setOdalar(prev => [...prev, { ...oda, id, dernekId: tid }]);
     } else {
       const yeni: Oda = { ...oda, id: `oda-${Date.now()}` };
       const guncel = [...odalar, yeni];
@@ -276,10 +375,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const rezervasyonYukle = useCallback(() => yukle<Rezervasyon>('rezervasyonlar', KEYS.REZERVASYONLAR, setRezervasyanlar), []);
 
   const rezervasyonEkle = useCallback(async (rez: Omit<Rezervasyon, 'id' | 'olusturulmaTarihi'>) => {
+    // Çakışma kontrolü: aynı oda ve tarihte onaylı rezervasyon var mı?
+    const mevcut = rezervasyonlar.filter(
+      r => r.odaId === rez.odaId
+        && r.tarih === rez.tarih
+        && r.durum === 'onaylandi',
+    );
+    const zamanCakisiyor = (bas1: string, bit1: string, bas2: string, bit2: string) =>
+      bas1 < bit2 && bit1 > bas2;
+
+    const cakisan = mevcut.find(r =>
+      zamanCakisiyor(rez.baslangicSaati, rez.bitisSaati, r.baslangicSaati, r.bitisSaati),
+    );
+    if (cakisan) {
+      throw new Error(
+        `Bu saat aralığı dolu: ${cakisan.baslangicSaati}–${cakisan.bitisSaati} arası zaten onaylı bir rezervasyon var.`,
+      );
+    }
+
     const data = { ...rez, olusturulmaTarihi: new Date().toISOString() };
     if (IS_FIREBASE_CONFIGURED) {
-      const id = await fsAdd('rezervasyonlar', data);
-      setRezervasyanlar(prev => [...prev, { ...data, id }]);
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      const id = await fsAdd('rezervasyonlar', { ...data, dernekId: tid } as Omit<Rezervasyon, 'id'>);
+      setRezervasyanlar(prev => [...prev, { ...data, id, dernekId: tid }]);
     } else {
       const yeni: Rezervasyon = { ...data, id: `rez-${Date.now()}` };
       const guncel = [...rezervasyonlar, yeni];
@@ -308,8 +427,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const kitapEkle = useCallback(async (kitap: Omit<Kitap, 'id'>) => {
     if (IS_FIREBASE_CONFIGURED) {
-      const id = await fsAdd('kitaplar', kitap);
-      setKitaplar(prev => [...prev, { ...kitap, id }]);
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      const id = await fsAdd('kitaplar', { ...kitap, dernekId: tid } as Omit<Kitap, 'id'>);
+      setKitaplar(prev => [...prev, { ...kitap, id, dernekId: tid }]);
     } else {
       const yeni: Kitap = { ...kitap, id: `kitap-${Date.now()}` };
       const guncel = [...kitaplar, yeni];
@@ -337,7 +458,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const oduncYukle = useCallback(async () => {
     let raw: OduncAlma[];
     if (IS_FIREBASE_CONFIGURED) {
-      raw = await fsGetAll<OduncAlma>('oduncAlmalar');
+      raw = await fsGetAllTenant<OduncAlma>('oduncAlmalar', tenantIdRef.current);
     } else {
       raw = (await getItem<OduncAlma[]>(KEYS.ODUNC_ALMALAR)) || [];
     }
@@ -378,8 +499,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
 
     if (IS_FIREBASE_CONFIGURED) {
-      const id = await fsAdd('oduncAlmalar', oduncData);
-      setOduncAlmalar(prev => [...prev, { ...oduncData, id }]);
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      const id = await fsAdd('oduncAlmalar', { ...oduncData, dernekId: tid } as Omit<OduncAlma, 'id'>);
+      setOduncAlmalar(prev => [...prev, { ...oduncData, id, dernekId: tid }]);
       await fsUpdate('kitaplar', kitapId, { musaitAdet: kitap.musaitAdet - 1 });
     } else {
       const yeni: OduncAlma = { ...oduncData, id: `odunc-${Date.now()}` };
@@ -419,8 +542,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const bursEkle = useCallback(async (burs: Omit<Burs, 'id' | 'olusturulmaTarihi'>) => {
     const data = { ...burs, olusturulmaTarihi: new Date().toISOString() };
     if (IS_FIREBASE_CONFIGURED) {
-      const id = await fsAdd('burslar', data);
-      setBurslar(prev => [...prev, { ...data, id }]);
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      const id = await fsAdd('burslar', { ...data, dernekId: tid } as Omit<Burs, 'id'>);
+      setBurslar(prev => [...prev, { ...data, id, dernekId: tid }]);
     } else {
       const yeni: Burs = { ...data, id: `burs-${Date.now()}` };
       const guncel = [...burslar, yeni];
@@ -489,7 +614,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       for (const g of gerekli) {
         const yerel = bel[g.id]?.trim();
         if (!yerel) throw new Error(`"${g.baslik}" belgesi zorunludur.`);
-        belgelerUri[g.id] = await yerelGorseliDataUriye(yerel, { genislik: 960, kalite: 0.52 });
+        const tidBurs = tenantIdRef.current ?? 'genel';
+        belgelerUri[g.id] = await uploadFileToStorage(yerel, `bursBelgeleri/${tidBurs}/${timestampedFileName(`belge_${g.id}`)}`);
       }
     }
 
@@ -498,8 +624,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       : { ...temel };
 
     if (IS_FIREBASE_CONFIGURED) {
-      const id = await fsAdd('bursBasvurulari', data);
-      setBursBasvurulari(prev => [...prev, { ...data, id }]);
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      const id = await fsAdd('bursBasvurulari', { ...data, dernekId: tid } as Omit<BursBasvurusu, 'id'>);
+      setBursBasvurulari(prev => [...prev, { ...data, id, dernekId: tid }]);
     } else {
       const yeni: BursBasvurusu = { ...data, id: `basv-${Date.now()}` };
       const guncel = [...bursBasvurulari, yeni];
@@ -584,8 +712,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
     let newId: string;
     if (IS_FIREBASE_CONFIGURED) {
-      newId = await fsAdd('etkinlikler', data);
-      setEtkinlikler(prev => [...prev, { ...data, id: newId }]);
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      newId = await fsAdd('etkinlikler', { ...data, dernekId: tid } as Omit<Etkinlik, 'id'>);
+      setEtkinlikler(prev => [...prev, { ...data, id: newId, dernekId: tid }]);
     } else {
       newId = `etk-${Date.now()}`;
       const yeni: Etkinlik = { ...data, id: newId };
@@ -595,12 +725,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     const yerel = secenek?.gorselYerelUri;
     if (!yerel) return;
-    const { dataUri } = await duyuruGorseliKaydet(yerel);
+    const tid2 = tenantIdRef.current ?? 'genel';
+    const gorselUrl = await gorselUrlKaydet(yerel, `etkinlikGorseller/${tid2}/${timestampedFileName('etk')}`);
     if (IS_FIREBASE_CONFIGURED) {
-      await fsUpdate('etkinlikler', newId, { gorselUri: dataUri });
+      await fsUpdate('etkinlikler', newId, { gorselUri: gorselUrl });
     }
     setEtkinlikler(prev => {
-      const next = prev.map(e => (e.id === newId ? { ...e, gorselUri: dataUri } : e));
+      const next = prev.map(e => (e.id === newId ? { ...e, gorselUri: gorselUrl } : e));
       if (!IS_FIREBASE_CONFIGURED) void setItem(KEYS.ETKINLIKLER, next);
       return next;
     });
@@ -627,8 +758,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } else if (gorsel === 'kaldir') {
         yeniGorsel = 'kaldir';
       } else {
-        const { dataUri } = await duyuruGorseliKaydet(gorsel.yerelUri);
-        yeniGorsel = dataUri;
+        const tid2 = tenantIdRef.current ?? 'genel';
+        yeniGorsel = await gorselUrlKaydet(gorsel.yerelUri, `etkinlikGorseller/${tid2}/${timestampedFileName('etk')}`);
       }
 
       const patchFs: Record<string, unknown> = {};
@@ -701,8 +832,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const dernekDurumuYukle = useCallback(async () => {
     if (IS_FIREBASE_CONFIGURED) {
-      const snap = await getDoc(doc(db, 'ayarlar', 'dernekDurumu'));
-      setDernekDurumu(snap.exists() ? (snap.data() as DernekDurumu) : null);
+      const tid = tenantIdRef.current;
+      if (!tid) {
+        setDernekDurumu(null);
+        return;
+      }
+      const snap = await getDoc(doc(db, 'dernekler', tid));
+      const dd = snap.data()?.dernekDurumu;
+      setDernekDurumu(dd && typeof dd === 'object' ? (dd as DernekDurumu) : null);
     } else {
       const data = await getItem<DernekDurumu>(KEYS.DERNEK_DURUMU);
       setDernekDurumu(data);
@@ -712,7 +849,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const dernekDurumuGuncelle = useCallback(async (acik: boolean, mesaj: string, guncelleyenKullanici: string) => {
     const yeni: DernekDurumu = { acik, mesaj, guncellenmeTarihi: new Date().toISOString(), guncelleyenKullanici };
     if (IS_FIREBASE_CONFIGURED) {
-      await fsSet('ayarlar', 'dernekDurumu', yeni);
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      await updateDoc(doc(db, 'dernekler', tid), { dernekDurumu: yeni });
     } else {
       await setItem(KEYS.DERNEK_DURUMU, yeni);
     }
@@ -723,7 +862,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const duyuruYukle = useCallback(async () => {
     if (IS_FIREBASE_CONFIGURED) {
-      const q = query(collection(db, 'duyurular'), orderBy('olusturulmaTarihi', 'desc'));
+      const tid = tenantIdRef.current;
+      if (!tid) {
+        setDuyurular([]);
+        return;
+      }
+      const q = query(
+        collection(db, 'duyurular'),
+        where('dernekId', '==', tid),
+        orderBy('olusturulmaTarihi', 'desc'),
+      );
       const snap = await getDocs(q);
       setDuyurular(
         dedupeByIdKeepFirst(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Duyuru))),
@@ -742,9 +890,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const temiz = firestoreTemiz({ ...duyuruTemel } as Record<string, unknown>);
     let newId: string;
     if (IS_FIREBASE_CONFIGURED) {
-      const ref = await addDoc(collection(db, 'duyurular'), temiz);
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      const ref = await addDoc(collection(db, 'duyurular'), { ...temiz, dernekId: tid });
       newId = ref.id;
-      setDuyurular((prev) => dedupeByIdKeepFirst([{ ...duyuruTemel, id: newId }, ...prev]));
+      setDuyurular((prev) => dedupeByIdKeepFirst([{ ...duyuruTemel, id: newId, dernekId: tid }, ...prev]));
     } else {
       newId = `duyuru-${Date.now()}`;
       const yeni: Duyuru = { ...duyuruTemel, id: newId };
@@ -755,12 +905,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       });
     }
     if (!gorselYerelUri) return;
-    const { dataUri } = await duyuruGorseliKaydet(gorselYerelUri);
+    const tidDuy = tenantIdRef.current ?? 'genel';
+    const gorselUrl = await gorselUrlKaydet(gorselYerelUri, `duyuruGorseller/${tidDuy}/${timestampedFileName('duy')}`);
     if (IS_FIREBASE_CONFIGURED) {
-      await fsUpdate('duyurular', newId, { gorselUri: dataUri });
+      await fsUpdate('duyurular', newId, { gorselUri: gorselUrl });
     }
     setDuyurular((prev) => {
-      const next = dedupeByIdKeepFirst(prev.map((d) => (d.id === newId ? { ...d, gorselUri: dataUri } : d)));
+      const next = dedupeByIdKeepFirst(prev.map((d) => (d.id === newId ? { ...d, gorselUri: gorselUrl } : d)));
       if (!IS_FIREBASE_CONFIGURED) void setItem(KEYS.DUYURULAR, next);
       return next;
     });
@@ -786,8 +937,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } else if (gorsel === 'kaldir') {
         yeniGorsel = 'kaldir';
       } else {
-        const { dataUri } = await duyuruGorseliKaydet(gorsel.yerelUri);
-        yeniGorsel = dataUri;
+        const tidDuy2 = tenantIdRef.current ?? 'genel';
+        yeniGorsel = await gorselUrlKaydet(gorsel.yerelUri, `duyuruGorseller/${tidDuy2}/${timestampedFileName('duy')}`);
       }
 
       const patchFs: Record<string, unknown> = { ...veri, guncellenmeTarihi };
@@ -851,9 +1002,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const aidatAylikMiktariYukle = useCallback(async (): Promise<number> => {
     let n = AIDAT_VARSAYILAN_MIKTAR;
     if (IS_FIREBASE_CONFIGURED) {
-      const snap = await getDoc(doc(db, 'ayarlar', 'aidatAylikMiktar'));
-      if (snap.exists()) {
-        const raw = (snap.data() as { miktar?: unknown }).miktar;
+      const tid = tenantIdRef.current;
+      if (tid) {
+        const snap = await getDoc(doc(db, 'dernekler', tid));
+        const raw = snap.data()?.aidatAylikMiktar;
         n = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : AIDAT_VARSAYILAN_MIKTAR;
       }
     } else {
@@ -870,9 +1022,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     const yuvarla = Math.round(miktar * 100) / 100;
     if (IS_FIREBASE_CONFIGURED) {
-      await fsSet('ayarlar', 'aidatAylikMiktar', {
-        miktar: yuvarla,
-        guncellenmeTarihi: new Date().toISOString(),
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      await updateDoc(doc(db, 'dernekler', tid), {
+        aidatAylikMiktar: yuvarla,
       });
     } else {
       await setItem(KEYS.AIDAT_AYLIK_MIKTAR, { miktar: yuvarla });
@@ -886,7 +1039,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const miktarVal = await aidatAylikMiktariYukle();
     let mevcut: AidatOdemesi[];
     if (IS_FIREBASE_CONFIGURED) {
-      const data = await fsGetAll<AidatOdemesi>('aidatOdemeleri');
+      const data = await fsGetAllTenant<AidatOdemesi>('aidatOdemeleri', tenantIdRef.current);
       mevcut = data.map(normalizeAidatDoc);
     } else {
       const data = await getItem<AidatOdemesi[]>(KEYS.AIDAT_ODEMELERI);
@@ -896,8 +1049,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     let uyeler: User[];
     if (IS_FIREBASE_CONFIGURED) {
-      const raw = await fsGetAll<User>('users');
-      uyeler = raw.map((u) => ({ ...u, rol: normalizeUserRole(u.rol) }));
+      uyeler = await firebaseDernekUyeleriOlarakUserList();
     } else {
       uyeler = ((await getItem<User[]>(KEYS.USERS)) || []).map((u) => ({ ...u, rol: normalizeUserRole(u.rol) }));
     }
@@ -927,6 +1079,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     if (toAdd.length > 0) {
       if (IS_FIREBASE_CONFIGURED) {
+        const tid = tenantIdRef.current;
+        if (!tid) return;
         const BATCH = 450;
         for (let i = 0; i < toAdd.length; i += BATCH) {
           const batch = writeBatch(db);
@@ -936,19 +1090,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
             batch.set(
               ref,
               firestoreTemiz({
-                kullaniciId: row.kullaniciId,
-                kullaniciAdi: row.kullaniciAdi,
-                yil: row.yil,
-                ay: row.ay,
-                miktar: row.miktar,
-                odendi: false,
-                sonOdemeTarihi: row.sonOdemeTarihi,
+                ...row,
+                dernekId: tid,
               } as Record<string, unknown>),
             );
           }
           await batch.commit();
         }
-        const son = await fsGetAll<AidatOdemesi>('aidatOdemeleri');
+        const son = await fsGetAllTenant<AidatOdemesi>('aidatOdemeleri', tid);
         setAidatOdemeleri(dedupeByIdKeepFirst(son.map(normalizeAidatDoc)));
       } else {
         const ts = Date.now();
@@ -974,8 +1123,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     const kayit = normalizeAidatDoc({ ...aidat, ay: aidat.ay } as AidatOdemesi);
     if (IS_FIREBASE_CONFIGURED) {
-      const id = await fsAdd('aidatOdemeleri', firestoreTemiz({ ...kayit } as Record<string, unknown>));
-      setAidatOdemeleri((prev) => dedupeByIdKeepFirst([...prev, { ...kayit, id }]));
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      const id = await fsAdd(
+        'aidatOdemeleri',
+        firestoreTemiz({ ...kayit, dernekId: tid } as Record<string, unknown>),
+      );
+      setAidatOdemeleri((prev) => dedupeByIdKeepFirst([...prev, { ...kayit, id, dernekId: tid }]));
       return id;
     }
     const id = `aidat-${Date.now()}`;
@@ -1064,8 +1218,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const kullaniciYukle = useCallback(async () => {
     if (IS_FIREBASE_CONFIGURED) {
-      const data = await fsGetAll<User>('users');
-      setKullanicilar(data.map(u => ({ ...u, rol: normalizeUserRole(u.rol) })));
+      const list = await firebaseDernekUyeleriOlarakUserList();
+      setKullanicilar(list);
     } else {
       const data = await getItem<User[]>(KEYS.USERS);
       setKullanicilar((data || []).map(u => ({ ...u, rol: normalizeUserRole(u.rol) })));
@@ -1079,7 +1233,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
       rol: veri.rol !== undefined ? normalizeUserRole(veri.rol) : u.rol,
     });
     if (IS_FIREBASE_CONFIGURED) {
-      await fsUpdate('users', id, veri);
+      const tid = tenantIdRef.current;
+      if (!tid) throw new Error('Dernek bağlamı yok.');
+      const uyelikAlanlari: (keyof User)[] = ['rol', 'uyelikDurumu', 'uyelikBaslangic'];
+      const uyelikPatch: Record<string, unknown> = {};
+      for (const k of uyelikAlanlari) {
+        if (veri[k] !== undefined) uyelikPatch[k] = veri[k];
+      }
+      if (Object.keys(uyelikPatch).length > 0) {
+        const bid = uyelikBelgeId(id, tid);
+        await fsUpdate('uyelikler', bid, firestoreTemiz(uyelikPatch));
+      }
+      const profilPatch: Record<string, unknown> = {};
+      if (veri.ad !== undefined) profilPatch.ad = veri.ad;
+      if (veri.soyad !== undefined) profilPatch.soyad = veri.soyad;
+      if (veri.telefon !== undefined) profilPatch.telefon = veri.telefon;
+      if (Object.keys(profilPatch).length > 0) {
+        await fsUpdate('users', id, firestoreTemiz(profilPatch));
+      }
       setKullanicilar(prev => prev.map(u => (u.id === id ? merge(u) : u)));
     } else {
       const data = await getItem<User[]>(KEYS.USERS) || [];
@@ -1103,6 +1274,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
       aidatOdemeleri, aidatYukle, aidatEkle, aidatGuncelle, aidatOnayla, aidatReddet, aidatOde,
       aidatAylikMiktari, aidatAylikMiktariYukle, aidatAylikMiktariGuncelle,
       kullanicilar, kullaniciYukle, kullaniciGuncelle,
+      gonulluGorevler: gonullulukEnvanter.gonulluGorevler,
+      gonulluBasvurular: gonullulukEnvanter.gonulluBasvurular,
+      gonulluGorevYukle: gonullulukEnvanter.gonulluGorevYukle,
+      gonulluBasvuruYukle: gonullulukEnvanter.gonulluBasvuruYukle,
+      gonulluGorevEkle: gonullulukEnvanter.gonulluGorevEkle,
+      gonulluGorevGuncelle: gonullulukEnvanter.gonulluGorevGuncelle,
+      gonulluGorevSil: gonullulukEnvanter.gonulluGorevSil,
+      gonulluBasvur: gonullulukEnvanter.gonulluBasvur,
+      gonulluBasvuruGuncelle: gonullulukEnvanter.gonulluBasvuruGuncelle,
+      onayliGonulluSayisi: gonullulukEnvanter.onayliBasvuruSayisi,
+      envanterKayitlari: gonullulukEnvanter.envanterKayitlari,
+      envanterZimmetler: gonullulukEnvanter.envanterZimmetler,
+      envanterYukle: gonullulukEnvanter.envanterYukle,
+      envanterZimmetYukle: gonullulukEnvanter.envanterZimmetYukle,
+      envanterEkle: gonullulukEnvanter.envanterEkle,
+      envanterGuncelle: gonullulukEnvanter.envanterGuncelle,
+      envanterSil: gonullulukEnvanter.envanterSil,
+      envanterZimmetVer: gonullulukEnvanter.envanterZimmetVer,
+      envanterZimmetIade: gonullulukEnvanter.envanterZimmetIade,
     }}>
       {children}
     </DataContext.Provider>

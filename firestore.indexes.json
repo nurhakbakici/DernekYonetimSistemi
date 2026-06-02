@@ -1,0 +1,47 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "duyurular",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dernekId", "order": "ASCENDING" },
+        { "fieldPath": "olusturulmaTarihi", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "gonulluGorevler",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dernekId", "order": "ASCENDING" },
+        { "fieldPath": "tarih", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "envanterler",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dernekId", "order": "ASCENDING" },
+        { "fieldPath": "ad", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "uyelikler",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "rol", "order": "ASCENDING" },
+        { "fieldPath": "uyelikDurumu", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "kullaniciBildirimleri",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dernekId", "order": "ASCENDING" },
+        { "fieldPath": "kullaniciId", "order": "ASCENDING" },
+        { "fieldPath": "olusturulmaTarihi", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

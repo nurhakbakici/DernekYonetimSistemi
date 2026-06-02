@@ -78,12 +78,31 @@ npm install
 | `npm run start:tunnel` | Tunnel modu (ör. fiziksel cihazda uzaktan test) |
 | `npm run android` | Android hedefi |
 | `npm run ios` | iOS hedefi (macOS + Xcode) |
+
+### Web yönetim paneli (dernek yöneticileri)
+
+`web-admin/` klasöründe **Vite + React** ile çalışan panel: yalnızca Firestore’da `uyelikler` kaydında `rol: admin` ve `uyelikDurumu: aktif` olan hesaplar giriş yapabilir. Dashboard (üyelik, rezervasyon, aidat özetleri ve grafikler) ve **modül** (paket) yönetimi içerir.
+
+```powershell
+cd KuleSakinleri\web-admin
+copy .env.example .env
+# Mobil .env içindeki EXPO_PUBLIC_FIREBASE_* değerlerini VITE_FIREBASE_* olarak yazın
+npm install
+npm run dev
+```
+
+Tarayıcı: **http://localhost:5174** — Giriş: seed veya mevcut yönetici hesabı (ör. `admin@demo.com` / `Demo123!`).
+
+Firestore kurallarını ve indeksleri dağıtın (`firestore.rules`, `firestore.indexes.json`). Dernek yöneticisi yalnızca `dernekler/{id}.paketler` alanını güncelleyebilir.
 | `npm run web` | Web derlemesi |
 | `npm run seed:firestore` | Firestore’a örnek veri (Firebase yapılandırılmış ve ortam değişkenleri tanımlı olmalı) |
+| `npm run seed:rich` | Mevcut `demo-dernek` kaydına sunum için ek kitap/burs/rezervasyon/üye vb. (önce temel seed) |
+
+**Yerel demo (AsyncStorage) zengin veri:** İlk kurulumda `mockDataRich.ts` yüklenir. Eski veriyi silmek için uygulamayı kaldırın veya geliştirici menüsünden depolamayı temizleyin; ardından yeniden açın.
 
 **Expo Go:** Terminalde görünen QR kodu Expo Go ile tarayın.
 
-**Uygulama kimliği (derleme için):** `app.json` — Android `com.kulesakinleri.app`, iOS `com.kulesakinleri.app`.
+**Uygulama kimliği (derleme için):** `app.json` — Android `com.dernekapp.yonetim`, iOS `com.dernekapp.yonetim`.
 
 ---
 
@@ -124,7 +143,7 @@ Uygulama aşağıdaki **koleksiyon** adlarını kullanır (özet):
 | `etkinlikler` | Etkinlikler |
 | `duyurular` | Duyurular |
 | `aidatOdemeleri` | Aidat ödemeleri |
-| `ayarlar` (sabit dokümanlar) | `dernekDurumu`, `aidatAylikMiktar` |
+| ~~`ayarlar`~~ | Kaldırıldı — `dernekDurumu` ve `aidatAylikMiktar` artık `dernekler/{id}` dokümanında tutulur |
 
 ---
 
@@ -136,7 +155,7 @@ Aşağıdaki hesaplar **yalnızca yerel demo** içindir; üretimde kullanılmama
 
 | Rol | E-posta | Şifre |
 |-----|---------|--------|
-| Yönetici | `admin@kulesakinleri.com` | `admin123` |
+| Yönetici | Seed'de `SEED_ADMIN_EMAIL` (.env) | `SEED_ADMIN_PASSWORD` (.env) |
 | Üye | `uye@kulesakinleri.com` | `123456` |
 | Aday üye | `aday@kulesakinleri.com` | `123456` |
 

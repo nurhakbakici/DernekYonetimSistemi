@@ -21,13 +21,15 @@ interface QuickCard {
 }
 
 export default function HomeScreen() {
-  const { kullanici } = useAuth();
+  const { kullanici, paketAktif } = useAuth();
   const {
     dernekDurumu, dernekDurumuYukle,
     etkinlikler, etkinlikYukle,
     rezervasyonlar, rezervasyonYukle,
     oduncAlmalar, oduncYukle,
     duyurular, duyuruYukle,
+    gonulluGorevler, gonulluGorevYukle, gonulluBasvuruYukle,
+    envanterKayitlari, envanterYukle, envanterZimmetYukle,
   } = useData();
   const navigation = useNavigation<any>();
   const [yukleniyor, setYukleniyor] = React.useState(false);
@@ -40,10 +42,12 @@ export default function HomeScreen() {
     setYukleniyor(true);
     const tam = tamUyeOzelliklerineErisir(kullanici);
     await Promise.all([
-      dernekDurumuYukle(),
+      ...(paketAktif('acikKapali') ? [dernekDurumuYukle()] : []),
       duyuruYukle(),
       etkinlikYukle(),
       ...(tam ? [rezervasyonYukle(), oduncYukle()] : []),
+      ...(paketAktif('gonulluluk') ? [gonulluGorevYukle(), gonulluBasvuruYukle()] : []),
+      ...(paketAktif('envanter') && tam ? [envanterYukle(), envanterZimmetYukle()] : []),
     ]);
     setYukleniyor(false);
   };
@@ -70,38 +74,50 @@ export default function HomeScreen() {
   const sonDuyurular = duyurular.slice(0, 3);
 
   const quickCards: QuickCard[] = [
-    ...(tamUyelik ? [
-      {
-        ikon: 'business-outline' as const,
-        baslik: 'Oda Rezervasyon',
-        aciklama: `${benimRezervasyonlarim.length} aktif rezervasyon`,
-        renk: Colors.info,
-        onPress: () => navigation.navigate('Odalar'),
-      },
-      {
-        ikon: 'library-outline' as const,
-        baslik: 'Kütüphane',
-        aciklama: gecikmisSayisi > 0
-          ? `${aktifOdunclar.length} ödünç · ${gecikmisSayisi} gecikmiş`
-          : `${aktifOdunclar.length} ödünç kitap`,
-        renk: Colors.success,
-        onPress: () => navigation.navigate('Kutuphane'),
-      },
-      {
-        ikon: 'card-outline' as const,
-        baslik: 'Aidat',
-        aciklama: kullanici?.uyelikDurumu === 'aktif' ? 'Üyelik aktif' : 'Üyelik beklemede',
-        renk: Colors.purple,
-        onPress: () => navigation.navigate('Profil', { screen: 'Membership' }),
-      },
-    ] : []),
-    {
-      ikon: 'calendar-outline',
+    ...(tamUyelik && paketAktif('odalar') ? [{
+      ikon: 'business-outline' as const,
+      baslik: 'Oda Rezervasyon',
+      aciklama: `${benimRezervasyonlarim.length} aktif rezervasyon`,
+      renk: Colors.info,
+      onPress: () => navigation.navigate('Odalar'),
+    }] : []),
+    ...(tamUyelik && paketAktif('kutuphane') ? [{
+      ikon: 'library-outline' as const,
+      baslik: 'Kütüphane',
+      aciklama: gecikmisSayisi > 0
+        ? `${aktifOdunclar.length} ödünç · ${gecikmisSayisi} gecikmiş`
+        : `${aktifOdunclar.length} ödünç kitap`,
+      renk: Colors.success,
+      onPress: () => navigation.navigate('Kutuphane'),
+    }] : []),
+    ...(tamUyelik && paketAktif('aidat') ? [{
+      ikon: 'card-outline' as const,
+      baslik: 'Aidat',
+      aciklama: kullanici?.uyelikDurumu === 'aktif' ? 'Üyelik aktif' : 'Üyelik beklemede',
+      renk: Colors.purple,
+      onPress: () => navigation.navigate('Profil', { screen: 'Membership' }),
+    }] : []),
+    ...(paketAktif('etkinlikler') ? [{
+      ikon: 'calendar-outline' as const,
       baslik: 'Etkinlikler',
       aciklama: `${yaklasanEtkinlikler.length} yaklaşan etkinlik`,
       renk: Colors.secondary,
       onPress: () => navigation.navigate('Etkinlikler'),
-    },
+    }] : []),
+    ...(tamUyelik && paketAktif('gonulluluk') ? [{
+      ikon: 'hand-left-outline' as const,
+      baslik: 'Gönüllülük',
+      aciklama: `${gonulluGorevler.filter(g => g.durum === 'acik').length} açık görev`,
+      renk: Colors.info,
+      onPress: () => navigation.navigate('Profil', { screen: 'VolunteerTasks' }),
+    }] : []),
+    ...(tamUyelik && paketAktif('envanter') ? [{
+      ikon: 'cube-outline' as const,
+      baslik: 'Envanter',
+      aciklama: `${envanterKayitlari.filter(e => e.musaitAdet > 0).length} müsait demirbaş`,
+      renk: Colors.warning,
+      onPress: () => navigation.navigate('Profil', { screen: 'Inventory' }),
+    }] : []),
   ];
 
   return (
@@ -137,27 +153,28 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={yukleniyor} onRefresh={yukle} tintColor={Colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Dernek Durumu */}
-        <View
-          style={[styles.dernekDurumCard, dernekDurumu?.acik ? styles.acikCard : styles.kapaliCard]}
-        >
-          <View style={styles.durumSolTaraf}>
-            <View style={[styles.durumDot, dernekDurumu?.acik ? styles.acikDot : styles.kapaliDot]} />
-            <View>
-              <Text style={styles.durumBaslik}>
-                {dernekDurumu?.acik ? 'Dernek Açık' : 'Dernek Kapalı'}
-              </Text>
-              {dernekDurumu?.mesaj && (
-                <Text style={styles.durumMesaj}>{dernekDurumu.mesaj}</Text>
-              )}
+        {paketAktif('acikKapali') && (
+          <View
+            style={[styles.dernekDurumCard, dernekDurumu?.acik ? styles.acikCard : styles.kapaliCard]}
+          >
+            <View style={styles.durumSolTaraf}>
+              <View style={[styles.durumDot, dernekDurumu?.acik ? styles.acikDot : styles.kapaliDot]} />
+              <View>
+                <Text style={styles.durumBaslik}>
+                  {dernekDurumu?.acik ? 'Dernek Açık' : 'Dernek Kapalı'}
+                </Text>
+                {dernekDurumu?.mesaj && (
+                  <Text style={styles.durumMesaj}>{dernekDurumu.mesaj}</Text>
+                )}
+              </View>
             </View>
+            <Ionicons
+              name={dernekDurumu?.acik ? 'checkmark-circle' : 'close-circle'}
+              size={32}
+              color={dernekDurumu?.acik ? Colors.success : Colors.error}
+            />
           </View>
-          <Ionicons
-            name={dernekDurumu?.acik ? 'checkmark-circle' : 'close-circle'}
-            size={32}
-            color={dernekDurumu?.acik ? Colors.success : Colors.error}
-          />
-        </View>
+        )}
 
         <View style={styles.duyuruBolum}>
           <View style={styles.duyuruBolumBaslik}>

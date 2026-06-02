@@ -1,5 +1,72 @@
+import type { FeaturePaketId } from '../constants/featurePackages';
+
 export type UserRole = 'admin' | 'uye' | 'aday';
 
+/** Firestore `users/{uid}` — kiracıdan bağımsız profil (rol burada tutulmaz). */
+export interface UserProfile {
+  id: string;
+  ad: string;
+  soyad: string;
+  email: string;
+  telefon?: string;
+  olusturulmaTarihi: string;
+}
+
+/** Firestore `uyelikler/{userId}_{dernekId}` */
+export interface Uyelik {
+  id: string;
+  userId: string;
+  dernekId: string;
+  rol: UserRole;
+  uyelikDurumu: 'aktif' | 'pasif' | 'beklemede';
+  uyelikBaslangic: string;
+  olusturulmaTarihi: string;
+}
+
+export type DernekKayitDurumu = 'onay_bekliyor' | 'aktif' | 'reddedildi';
+
+/** Oturum kapalıyken giriş / kayıt ekranında gösterilecek son dernek markası. */
+export type GirisMarkasi =
+  | { tip: 'genel' }
+  | { tip: 'dernek'; ad: string; logoUri: string | null };
+
+/** Firestore `dernekler/{id}` */
+export interface DernekFirestore {
+  id: string;
+  ad: string;
+  slug: string;
+  /** DERBİS (Dernek Bilgi Sistemi) kayıt numarası. */
+  derbisNo?: string;
+  durum: DernekKayitDurumu;
+  /** Açık özellik paketi id’leri (bkz. `FEATURE_PAKETLERI`). */
+  paketler: FeaturePaketId[];
+  /** Üyelerin derneğe katılması için paylaşılan kod (büyük harf). Kullanılmayan alan. */
+  katilimKodu?: string;
+  /**
+   * Aidat takibinin başladığı tarih (YYYY-MM-DD).
+   * Belirtilmezse `AIDAT_BASLANGIC_YIL`/`AIDAT_BASLANGIC_AY` sabitleri kullanılır.
+   */
+  aidatBaslangicTarihi?: string;
+  olusturanUserId: string;
+  olusturulmaTarihi: string;
+  onaylayanUserId?: string;
+  onayTarihi?: string;
+  redMesaji?: string;
+  /** Dernek kapalı/açık mesajı (önceki `ayarlar/dernekDurumu` yerine). */
+  dernekDurumu?: DernekDurumu;
+  aidatAylikMiktar?: number;
+  /** HTTPS logo adresi (giriş / ana sayfa). */
+  logoUrl?: string;
+}
+
+/** Kayıt veya “derneğe bağlan” ekranında listelenen aktif dernek satırı. */
+export interface KayitDernekOzeti {
+  id: string;
+  ad: string;
+  logoUrl?: string;
+}
+
+/** Oturumdaki birleşik kullanıcı: profil + seçili dernekteki üyelik. */
 export interface User {
   id: string;
   ad: string;
@@ -10,6 +77,8 @@ export interface User {
   uyelikDurumu: 'aktif' | 'pasif' | 'beklemede';
   uyelikBaslangic: string;
   olusturulmaTarihi: string;
+  /** Firebase çok kiracılı modda aktif dernek. Yerel demo modda kullanılmayabilir. */
+  dernekId?: string;
 }
 
 export interface Oda {
@@ -20,6 +89,8 @@ export interface Oda {
   ozellikler: string[];
   aktif: boolean;
   resimUrl?: string;
+  /** Firebase çok kiracı */
+  dernekId?: string;
 }
 
 export interface Rezervasyon {
@@ -34,6 +105,7 @@ export interface Rezervasyon {
   amac: string;
   durum: 'beklemede' | 'onaylandi' | 'iptal';
   olusturulmaTarihi: string;
+  dernekId?: string;
 }
 
 export interface Kitap {
@@ -47,6 +119,7 @@ export interface Kitap {
   aciklama?: string;
   yayinYili?: number;
   resimUrl?: string;
+  dernekId?: string;
 }
 
 export interface OduncAlma {
@@ -59,6 +132,7 @@ export interface OduncAlma {
   iadeTarihi: string;
   gercekIadeTarihi?: string;
   durum: 'aktif' | 'iade_edildi' | 'gecikti';
+  dernekId?: string;
 }
 
 /** Başvuruda ayrı yüklenecek zorunlu belge alanı (yönetici burs oluştururken seçer) */
@@ -81,6 +155,7 @@ export interface Burs {
   gerekliBelgeler?: BursGerekliBelge[];
   durum: 'aktif' | 'kapali';
   olusturulmaTarihi: string;
+  dernekId?: string;
 }
 
 export interface BursBasvurusu {
@@ -102,6 +177,7 @@ export interface BursBasvurusu {
   /** Yalnızca durum onaylandıktan sonra: burs ödemesinin hesaba yatırılıp yatırılmadığı */
   bursOdemeDurumu?: 'beklemede' | 'yatirildi';
   bursOdemeTarihi?: string;
+  dernekId?: string;
 }
 
 export interface Etkinlik {
@@ -120,6 +196,7 @@ export interface Etkinlik {
   olusturulmaTarihi: string;
   /** Yerel URI veya sıkıştırılmış JPEG data URI (Firestore / yerel depo) */
   gorselUri?: string;
+  dernekId?: string;
 }
 
 export interface DernekDurumu {
@@ -127,6 +204,21 @@ export interface DernekDurumu {
   mesaj?: string;
   guncellenmeTarihi: string;
   guncelleyenKullanici: string;
+}
+
+/** Yöneticinin belirli bir üyeye gönderdiği hatırlatma (mobil bildirim + uygulama içi). */
+export interface KullaniciBildirimi {
+  id: string;
+  dernekId: string;
+  kullaniciId: string;
+  baslik: string;
+  icerik: string;
+  tur: 'odunc_gecikme' | 'aidat_gecikme';
+  ilgiliKayitId: string;
+  olusturulmaTarihi: string;
+  okundu?: boolean;
+  olusturanAdminId: string;
+  olusturanAdminAdi: string;
 }
 
 /** Yönetici duyurusu; tüm giriş yapmış kullanıcılar görür. */
@@ -141,6 +233,7 @@ export interface Duyuru {
   gorselUri?: string;
   /** Son düzenleme (isteğe bağlı) */
   guncellenmeTarihi?: string;
+  dernekId?: string;
 }
 
 /** `duyuruGuncelle` görsel davranışı */
@@ -175,4 +268,60 @@ export interface AidatOdemesi {
   redAciklamasi?: string;
   onaylayanAdminId?: string;
   onaylayanAdminAdi?: string;
+  dernekId?: string;
+}
+
+export interface GonulluGorev {
+  id: string;
+  baslik: string;
+  aciklama: string;
+  tarih: string;
+  baslangicSaati?: string;
+  bitisSaati?: string;
+  konum?: string;
+  kontenjan: number;
+  durum: 'acik' | 'kapali' | 'tamamlandi';
+  olusturanId: string;
+  olusturanAdi: string;
+  olusturulmaTarihi: string;
+  dernekId?: string;
+}
+
+export interface GonulluBasvuru {
+  id: string;
+  gorevId: string;
+  gorevBaslik: string;
+  kullaniciId: string;
+  kullaniciAdi: string;
+  basvuruTarihi: string;
+  durum: 'beklemede' | 'onaylandi' | 'reddedildi';
+  dernekId?: string;
+}
+
+export interface Envanter {
+  id: string;
+  ad: string;
+  kategori: string;
+  aciklama?: string;
+  toplamAdet: number;
+  musaitAdet: number;
+  lokasyon?: string;
+  seriNo?: string;
+  durum: 'kullanilabilir' | 'bakim' | 'arizali';
+  olusturulmaTarihi: string;
+  dernekId?: string;
+}
+
+export interface EnvanterZimmet {
+  id: string;
+  envanterId: string;
+  envanterAd: string;
+  kullaniciId: string;
+  kullaniciAdi: string;
+  zimmetTarihi: string;
+  planlananIade?: string;
+  gercekIadeTarihi?: string;
+  durum: 'aktif' | 'iade_edildi';
+  not?: string;
+  dernekId?: string;
 }

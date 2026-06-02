@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "595356823559",
+    "project_id": "kuleapp-c5a33",
+    "storage_bucket": "kuleapp-c5a33.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:595356823559:android:26384a9ac91503c458faa2",
+        "android_client_info": {
+          "package_name": "com.dernekapp.yonetim"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBacypQJ7zim7OU-1qOyu_apQEmnjamWVQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
