@@ -1,6 +1,6 @@
 # Kule Sakinleri
 
-**Kule Sakinleri Rol Yapma ve Masa Üstü Strateji Oyunları Derneği** için geliştirilmiş, **Expo (SDK 54)** ve **React Native** tabanlı mobil uygulama. Üyeler dernek işlemlerini (oda, kütüphane, burs, etkinlik, aidat vb.) tek uygulamadan takip eder; yöneticiler onay ve içerik yönetimini aynı kod tabanı üzerinden yapar.
+**Dernekler** için geliştirilmiş, **Expo (SDK 54)** ve **React Native** tabanlı mobil uygulama. Üyeler dernek işlemlerini (oda, kütüphane, burs, etkinlik, aidat vb.) tek uygulamadan takip eder; yöneticiler onay ve içerik yönetimini aynı kod tabanı üzerinden yapar.
 
 ---
 
